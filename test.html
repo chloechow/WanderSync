@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WanderSync • Secure Entry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Poppins:wght@500;700;900&display=swap');
+        
+        :root {
+            --primary: #475569;
+            --secondary: #64748b;
+            --accent: #3b82f6;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text-main: #1e293b;
+            --text-sec: #64748b;
+            --border: #e2e8f0;
+        }
+
+        body { font-family: 'Noto Sans SC', sans-serif; background-color: var(--bg); color: var(--text-main); -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        .font-poppins { font-family: 'Poppins', sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Default elements resets inside contenteditable */
+        [contenteditable]:focus { outline: 2px solid var(--accent); background: var(--bg); border-radius: 8px; padding: 4px 8px; }
+        [contenteditable][placeholder]:empty:before { content: attr(placeholder); color: #cbd5e1; font-style: italic; }
+        
+        /* Timeline - Preserved Original Styling */
+        .timeline-line { position: absolute; left: 19px; top: 0; bottom: 0; width: 2px; background: #e2e8f0; z-index: 0; }
+        .timeline-item { position: relative; padding-left: 50px; z-index: 1; }
+        .timeline-dot { position: absolute; left: 12px; top: 20px; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        
+        /* Animation & Modals */
+        #custom-modal, #image-viewer { display: none; }
+        #custom-modal.active, #image-viewer.active { display: flex; }
+        .modal-animate { animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes scaleUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+        .sync-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; transition: all 0.3s; white-space: nowrap; font-weight: bold; }
+        .sync-online { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .sync-offline { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        @media print { body { background-color: #fff !important; } }
+    </style>
+</head>
+<body class="print:bg-white print:pb-0 pb-32 w-full max-w-full">
+
+    <!-- Step 1: Database Config Screen (BYOD) -->
+    <div id="config-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-database text-2xl text-slate-600"></i>
+                </div>
+                <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">连接云端</h2>
+                <p class="text-xs text-slate-500 font-medium mt-1">初始化私人数据库连接</p>
+            </div>
+            <textarea id="config-input" rows="7" placeholder='{\n  "apiKey": "AIzaSy...",\n  "projectId": "...",\n  ...\n}' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
+            <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
+            <div class="flex flex-col gap-2">
+                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-600 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">连接数据库</button>
+                <button onclick="skipConfig()" class="w-full bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">跳过，仅使用本地离线模式</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Login Screen -->
+    <div id="login-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
+            <div class="flex justify-center mb-5">
+                <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center shadow-md transform rotate-3">
+                    <i class="fas fa-layer-group text-3xl text-white transform -rotate-3"></i>
+                </div>
+            </div>
+            <h2 class="text-3xl font-poppins font-black text-slate-800 tracking-tight">Wander<span class="text-blue-500">Sync</span></h2>
+            <p class="text-[10px] text-slate-500 mb-8 mt-2 uppercase tracking-[0.2em] font-bold">私密协作空间</p>
+            
+            <input id="login-id" type="text" placeholder="同步码 (ID)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase text-center font-bold tracking-widest text-slate-800 transition-all">
+            <input id="login-pin" type="password" placeholder="访问密码 (PIN)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-[0.5em] text-slate-800 transition-all">
+            <p id="login-error" class="text-red-500 text-xs font-bold mb-4 h-4"></p>
+            <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider">验证并进入</button>
+        </div>
+    </div>
+
+    <!-- Step 2.5: Init New Workspace Screen (Dynamic Setup) -->
+    <div id="init-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
+            <div class="text-center mb-6">
+                <i class="fas fa-rocket text-3xl text-blue-500 mb-3"></i>
+                <h2 class="text-xl font-poppins font-black text-slate-800">初始化新行程</h2>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">检测到全新的同步码，请配置基本信息</p>
+            </div>
+            <div class="space-y-3 mb-6">
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label><input id="init-trip-name" type="text" placeholder="例如：关西漫游 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员列表 (用逗号分隔，人数不限)</label><input id="init-members" type="text" placeholder="例如：张三, 李四, 王五" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label><input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
+                <button onclick="confirmInitWorkspace()" class="flex-1 bg-blue-500 text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 shadow-md shadow-blue-200 transition-colors text-sm">生成并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: App Wrapper -->
+    <div id="app-wrap" class="print:hidden w-full max-w-full hidden relative">
+        <!-- Unified Sticky Header & Nav Box -->
+        <div class="sticky top-0 z-50 w-full bg-slate-50/95 backdrop-blur-md pt-3 md:pt-4 pb-2 border-b border-slate-200/60 shadow-sm transition-all">
+            <div class="max-w-4xl mx-auto px-4">
+                <header class="bg-white rounded-[1.5rem] md:rounded-[2rem] border border-slate-200 p-3 px-5 flex justify-between items-center shadow-sm">
+                    <div class="min-w-0 flex items-center gap-3">
+                        <div class="w-9 h-9 md:w-10 md:h-10 bg-slate-800 rounded-[1rem] flex items-center justify-center shadow-sm flex-shrink-0">
+                            <i class="fas fa-layer-group text-white text-xs md:text-sm"></i>
+                        </div>
+                        <div class="min-w-0 flex-1 pr-2">
+                            <h1 id="main-header-title" class="text-base md:text-lg font-poppins font-black tracking-tight text-slate-800 truncate leading-tight">Wander<span class="text-blue-500">Sync</span></h1>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span id="sync-status" class="sync-badge sync-offline">本地离线</span>
+                                <span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all flex-shrink-0">
+                        <i class="fas fa-sliders-h"></i>
+                    </button>
+                </header>
+
+                <!-- Navigation Tabs (Days) -->
+                <nav id="itinerary-nav" class="mt-3">
+                    <div class="flex gap-2 overflow-x-auto hide-scrollbar pb-1" id="tabs-container"></div>
+                </nav>
+            </div>
+        </div>
+
+        <main id="main-container" class="max-w-4xl mx-auto p-4 space-y-4 w-full"></main>
+
+        <!-- Custom Modal -->
+        <div id="custom-modal" class="fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm w-full h-full hidden">
+            <div class="bg-white w-full max-w-md rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden modal-animate flex flex-col max-h-[85vh]">
+                <div class="p-6 flex-shrink-0 pb-2 border-b border-slate-50">
+                    <h3 id="modal-title" class="text-lg font-poppins font-black text-slate-800 mb-1 tracking-tight">编辑</h3>
+                    <p id="modal-subtitle" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></p>
+                </div>
+                <div id="modal-content" class="p-6 space-y-4 overflow-y-auto text-left flex-1 overscroll-touch"></div>
+                <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0">
+                    <button onclick="closeModal()" class="flex-1 py-3.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">取消</button>
+                    <button id="modal-confirm-btn" class="flex-1 py-3.5 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 shadow-sm transition-colors">确认保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Viewer Fullscreen Modal -->
+        <div id="image-viewer" class="fixed inset-0 z-[400] bg-slate-900/95 backdrop-blur-md hidden items-center justify-center p-4 transition-opacity" onclick="closeImageViewer()">
+            <button class="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors flex items-center justify-center"><i class="fas fa-times"></i></button>
+            <img id="image-viewer-img" src="" class="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl" onclick="event.stopPropagation()">
+        </div>
+
+        <!-- Floating Bottom Nav -->
+        <footer class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-400 rounded-[2rem] p-1.5 flex justify-around w-[90%] max-w-sm shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50">
+            <button onclick="changeView('itinerary')" id="nav-itinerary" class="flex flex-col items-center flex-1 py-2 px-2 rounded-3xl transition-all text-blue-500 bg-blue-50 font-medium"><i class="fas fa-route text-lg mb-1"></i><span class="text-[10px] font-bold">行程</span></button>
+            <button onclick="changeView('shopping')" id="nav-shopping" class="flex flex-col items-center flex-1 py-2 px-2 rounded-3xl transition-all hover:bg-slate-50 hover:text-slate-600 font-medium"><i class="fas fa-shopping-bag text-lg mb-1"></i><span class="text-[10px] font-bold">购物</span></button>
+            <button onclick="changeView('expenses')" id="nav-expenses" class="flex flex-col items-center flex-1 py-2 px-2 rounded-3xl transition-all hover:bg-slate-50 hover:text-slate-600 font-medium"><i class="fas fa-wallet text-lg mb-1"></i><span class="text-[10px] font-bold">记账</span></button>
+            <div class="w-[1px] h-8 bg-slate-200 my-auto mx-1"></div>
+            <a href="https://www.google.com/maps" target="_blank" class="flex flex-col items-center flex-1 py-2 px-2 rounded-3xl transition-all hover:bg-slate-50 hover:text-slate-600 font-medium"><i class="fas fa-map-marked-alt text-lg mb-1"></i><span class="text-[10px] font-bold">地图</span></a>
+        </footer>
+    </div>
+
+    <!-- Print Area -->
+    <div id="print-area" class="hidden print:block w-full max-w-4xl mx-auto bg-white text-black p-4 md:p-8"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let app, auth, db;
+        let isCloudConfigured = false;
+        let tripId = localStorage.getItem('trip_sync_id') || null;
+        let tripPin = localStorage.getItem('trip_sync_pin') || "";
+        let pendingNewId = null;
+        let pendingNewPin = null;
+        let currentView = 'itinerary';
+        let user = null;
+        let tripData = null;
+        let syncUnsubscribe = null; 
+
+        // Core Helper: Dynamic Multi-Member Setup
+        window.getMembers = () => {
+            if (tripData && tripData.settings && tripData.settings.members && tripData.settings.members.length > 0) {
+                return tripData.settings.members;
+            }
+            return ['成员 A', '成员 B'];
+        };
+
+        // UI Helper for coloring labels dynamically
+        window.getLabelHtml = (label) => {
+            if (!label) return '';
+            let normalizedLabel = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase(); // Normalize casing for matching
+            
+            if (label === '共同' || label.toLowerCase() === 'together') {
+                return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`;
+            }
+
+            const members = window.getMembers();
+            // Try case-insensitive matching with dynamically extracted members
+            const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase());
+            const displayLabel = idx !== -1 ? members[idx] : label;
+
+            if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`;
+            
+            const styles = [
+                "bg-blue-50 text-blue-600 border-blue-100",
+                "bg-pink-50 text-pink-600 border-pink-100",
+                "bg-emerald-50 text-emerald-600 border-emerald-100",
+                "bg-amber-50 text-amber-600 border-amber-100",
+                "bg-purple-50 text-purple-600 border-purple-100",
+                "bg-rose-50 text-rose-600 border-rose-100"
+            ];
+            const st = styles[idx % styles.length];
+            return `<span class="text-[10px] ${st} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`;
+        };
+
+        const initialDefaultData = {
+            currentDay: 1, pin: "", expenses: [], shoppingList: [],
+            isGeneric: true, tripName: "漫游计划",
+            settings: { members: ['成员 A', '成员 B'] },
+            days: [
+                { id: 1, date: "Day 1", title: "第一天行程", events: [], hotelName: "", hotelLink: "" },
+                { id: 2, date: "Day 2", title: "第二天行程", events: [], hotelName: "", hotelLink: "" },
+                { id: 3, date: "Day 3", title: "第三天行程", events: [], hotelName: "", hotelLink: "" }
+            ]
+        };
+
+        const initFirebase = (configStr) => {
+            try {
+                let config;
+                try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
+                if (!config.apiKey || !config.projectId) throw new Error("Invalid Config format");
+                app = initializeApp(config);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                isCloudConfigured = true;
+                return true;
+            } catch (err) {
+                return false;
+            }
+        };
+
+        window.saveFirebaseConfig = () => {
+            const val = document.getElementById('config-input').value.trim();
+            const errEl = document.getElementById('config-error');
+            if(!val) { errEl.innerText = "配置不可为空"; return; }
+            if (initFirebase(val)) {
+                localStorage.setItem('firebase_custom_config_v2', val);
+                document.getElementById('config-screen').classList.add('hidden');
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('login-screen').classList.add('active');
+                checkAuthAndProceed();
+            } else { errEl.innerText = "配置格式错误，请检查是否包含 apiKey"; }
+        };
+
+        window.skipConfig = () => {
+            isCloudConfigured = false;
+            document.getElementById('config-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-screen').classList.add('active');
+        };
+
+        window.attemptLogin = () => {
+            const idInput = document.getElementById('login-id').value.trim().toUpperCase();
+            const pinInput = document.getElementById('login-pin').value.trim();
+            const errorEl = document.getElementById('login-error');
+            if (!idInput) { errorEl.innerText = "请输入同步码"; return; }
+            
+            if (isCloudConfigured && user) {
+                document.getElementById('login-btn').innerText = "检查中...";
+                startSync(idInput, pinInput);
+            } else {
+                tripId = idInput; tripPin = pinInput;
+                localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+                loadLocalFallback();
+            }
+        };
+
+        const showLoginError = (msg) => {
+            document.getElementById('login-error').innerText = msg;
+            document.getElementById('login-btn').innerText = "验证并进入";
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-screen').classList.add('active');
+            document.getElementById('app-wrap').classList.add('hidden');
+        };
+
+        const unlockApp = () => {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('init-screen').classList.add('hidden');
+            document.getElementById('app-wrap').classList.remove('hidden');
+            document.title = (tripData?.tripName || "WanderSync") + " • Workspace";
+            
+            const badge = document.getElementById('trip-name-badge');
+            if (tripData?.tripName) {
+                badge.innerText = `• ${tripData.tripName}`;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+            render();
+        };
+
+        // Initialization of brand new generic workspace
+        window.cancelInitWorkspace = () => {
+            document.getElementById('init-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-btn').innerText = "验证并进入";
+            pendingNewId = null; pendingNewPin = null;
+        };
+
+        window.confirmInitWorkspace = () => {
+            const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划";
+            const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B";
+            const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+            
+            let dCount = parseInt(document.getElementById('init-days').value) || 5;
+            if(dCount > 30) dCount = 30;
+
+            let newDays = [];
+            for(let i=1; i<=dCount; i++) {
+                newDays.push({ id: i, date: `Day ${i}`, title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "" });
+            }
+
+            tripData = {
+                isGeneric: true,
+                pin: pendingNewPin,
+                tripName: tName,
+                settings: { members: membersList.length > 0 ? membersList : ['我'] },
+                currentDay: 1,
+                expenses: [],
+                shoppingList: [],
+                days: newDays
+            };
+            
+            tripId = pendingNewId;
+            tripPin = pendingNewPin;
+            localStorage.setItem('trip_sync_id', tripId);
+            localStorage.setItem('trip_sync_pin', tripPin);
+            
+            saveToCloud();
+            unlockApp();
+        };
+
+        const loadLocalFallback = () => {
+            const cached = JSON.parse(localStorage.getItem('trip_local_finance_v8'));
+            if (cached) {
+                if (cached.pin && cached.pin !== tripPin) { showLoginError("访问密码错误 (本地)"); return; }
+                tripData = cached;
+            } else {
+                showLoginError("本地没有找到该缓存，且云端未连接");
+                return;
+            }
+            document.getElementById('sync-status').innerText = isCloudConfigured ? '同步失败' : '本地离线';
+            document.getElementById('sync-status').className = 'sync-badge sync-offline';
+            unlockApp();
+        };
+
+        const startSync = (testId, testPin) => {
+            if (!isCloudConfigured) { loadLocalFallback(); return; }
+            if (syncUnsubscribe) syncUnsubscribe(); 
+            
+            const reqId = testId || tripId;
+            const reqPin = testPin !== undefined ? testPin : tripPin;
+            const tripRef = doc(db, 'travel_plans', reqId);
+            
+            syncUnsubscribe = onSnapshot(tripRef, (snap) => {
+                if (snap.exists()) {
+                    let cloudData = snap.data();
+                    if (cloudData.pin && cloudData.pin !== reqPin) {
+                        showLoginError("访问密码错误");
+                    } else {
+                        let needsMigration = false;
+                        if (!cloudData.isGeneric || !cloudData.settings || !cloudData.settings.members) {
+                            needsMigration = true;
+                            cloudData.isGeneric = true;
+                            cloudData.tripName = cloudData.tripName || "漫游计划";
+                            
+                            // 动态扫描事件中的所有人名标签
+                            let membersSet = new Set();
+                            (cloudData.days || []).forEach(d => {
+                                (d.events || []).forEach(e => {
+                                    if (e.label && e.label !== 'together' && e.label !== '共同') {
+                                        membersSet.add(e.label.charAt(0).toUpperCase() + e.label.slice(1).toLowerCase());
+                                        e.label = e.label.charAt(0).toUpperCase() + e.label.slice(1).toLowerCase(); // 顺手格式化大小写
+                                    }
+                                });
+                            });
+                            (cloudData.expenses || []).forEach(e => {
+                                if (e.payer) membersSet.add(e.payer.charAt(0).toUpperCase() + e.payer.slice(1).toLowerCase());
+                            });
+                            
+                            let dynamicMembers = Array.from(membersSet).filter(m => m !== '共同' && m !== 'Together');
+                            if (dynamicMembers.length === 0) dynamicMembers = ['成员 A', '成员 B'];
+                            cloudData.settings = { members: dynamicMembers };
+
+                            if (cloudData.oimachiHotel && cloudData.oimachiHotel.isSet) {
+                                (cloudData.days || []).forEach(d => {
+                                    if (d.id >= 3 && d.id <= 5 && !d.hotelName) {
+                                        d.hotelName = cloudData.oimachiHotel.title;
+                                        d.hotelLink = cloudData.oimachiHotel.link || "";
+                                    }
+                                });
+                            }
+                        }
+
+                        tripId = reqId; tripPin = reqPin;
+                        localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+                        tripData = cloudData;
+                        
+                        if (needsMigration) {
+                            saveToCloud(); // 将洗白提纯后的标准格式重新存回云端
+                        }
+
+                        document.getElementById('sync-status').innerText = '已同步';
+                        document.getElementById('sync-status').className = 'sync-badge sync-online';
+                        unlockApp();
+                    }
+                } else {
+                    pendingNewId = reqId;
+                    pendingNewPin = reqPin;
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('init-screen').classList.remove('hidden');
+                    document.getElementById('init-screen').classList.add('active');
+                }
+            }, (error) => {
+                console.error("同步失败:", error);
+                if(tripId) loadLocalFallback(); else showLoginError("网络权限错误");
+            });
+        };
+
+        const saveToCloud = async () => {
+            if (!isCloudConfigured || !user || !tripId || !tripData) {
+                localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+                return;
+            }
+            try { await setDoc(doc(db, 'travel_plans', tripId), tripData); } catch (err) {}
+            localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+        };
+
+        window.changeView = (view) => {
+            currentView = view;
+            ['itinerary', 'shopping', 'expenses'].forEach(t => {
+                const el = document.getElementById(`nav-${t}`);
+                if (el) {
+                    el.className = `flex flex-col items-center flex-1 py-2 px-2 rounded-3xl transition-all font-medium ${view === t ? 'text-blue-500 bg-blue-50' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'}`;
+                }
+            });
+            document.getElementById('itinerary-nav').classList.toggle('hidden', view !== 'itinerary');
+            render();
+        };
+
+        window.render = () => {
+            if (!tripData) return;
+            if (!tripData.shoppingList) tripData.shoppingList = [];
+            if (currentView === 'itinerary') renderItinerary(); 
+            else if (currentView === 'shopping') renderShopping();
+            else renderExpenses();
+        };
+
+        window.openImageViewer = (url) => {
+            if (!url) return;
+            document.getElementById('image-viewer-img').src = url;
+            const viewer = document.getElementById('image-viewer');
+            viewer.classList.remove('hidden');
+            viewer.classList.add('active');
+        };
+
+        window.closeImageViewer = () => {
+            const viewer = document.getElementById('image-viewer');
+            viewer.classList.remove('active');
+            setTimeout(() => { viewer.classList.add('hidden'); document.getElementById('image-viewer-img').src = ""; }, 200);
+        };
+
+        const renderShopping = () => {
+            const main = document.getElementById('main-container');
+            main.innerHTML = `
+                <div class="flex justify-between items-center px-1 mb-4 mt-2">
+                    <div>
+                        <h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">购物清单</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">种草好物</p>
+                    </div>
+                    <button onclick="addShoppingItem()" class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center group"><i class="fas fa-plus text-blue-500 mr-2 group-hover:scale-110 transition-transform"></i> 添加商品</button>
+                </div>
+                <div id="shopping-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            `;
+            const container = document.getElementById('shopping-list-container');
+            if (tripData.shoppingList.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-12 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed">
+                        <div class="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-shopping-bag text-2xl"></i></div>
+                        <p class="text-sm font-medium text-slate-500">空空如也，快去种草吧！</p>
+                    </div>`;
+            } else {
+                tripData.shoppingList.forEach((item, idx) => {
+                    const div = document.createElement('div');
+                    const imgHtml = item.imgUrl ? `<img src="${item.imgUrl}" onclick="openImageViewer('${item.imgUrl}')" onerror="this.src='https://via.placeholder.com/150?text=Error'" class="w-24 h-24 md:w-28 md:h-28 object-cover rounded-2xl flex-shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition-opacity">` : `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
+                    const boughtClass = item.bought ? 'opacity-60 grayscale bg-slate-50' : 'bg-white';
+                    const boughtBtn = item.bought ? `<button onclick="toggleShoppingItem(${idx})" class="text-[10px] bg-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold w-full mt-2 transition-colors">已购买</button>` : `<button onclick="toggleShoppingItem(${idx})" class="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold hover:bg-slate-50 w-full mt-2 transition-colors flex items-center justify-center"><i class="fas fa-check text-blue-500 mr-1.5"></i> 标记已买</button>`;
+
+                    div.className = `p-4 rounded-3xl border border-slate-200 shadow-sm flex gap-4 transition-all ${boughtClass} relative overflow-hidden`;
+                    div.innerHTML = `
+                        ${imgHtml}
+                        <div class="flex-1 min-w-0 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-1 gap-2">
+                                    <h4 class="font-bold text-slate-800 text-sm truncate ${item.bought ? 'line-through decoration-2 decoration-slate-400' : ''}">${item.name}</h4>
+                                    <div class="flex gap-2 flex-shrink-0">
+                                        <button onclick="editShoppingItem(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors bg-slate-50 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
+                                        <button onclick="deleteShoppingItem(${idx})" class="text-slate-400 hover:text-red-500 transition-colors bg-slate-50 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-trash text-[10px]"></i></button>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-bold">${item.source || '其他'}</span>
+                                    <span class="text-[10px] text-slate-500 font-medium truncate">参考价: <span class="text-slate-800 font-bold">${item.price || '无'}</span></span>
+                                </div>
+                                ${item.note ? `<p class="text-[10px] text-slate-500 truncate leading-tight bg-slate-50 p-1.5 rounded-lg border border-slate-100"><i class="fas fa-info-circle mr-1 opacity-50"></i>${item.note}</p>` : ''}
+                            </div>
+                            ${boughtBtn}
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+        };
+
+        const renderItinerary = () => {
+            const tabs = document.getElementById('tabs-container');
+            const main = document.getElementById('main-container');
+            tabs.innerHTML = '';
+            tripData.days.forEach(day => {
+                const btn = document.createElement('button');
+                const isActive = day.id === tripData.currentDay;
+                btn.className = `px-5 py-2.5 rounded-[1.25rem] text-sm font-bold whitespace-nowrap transition-all ${isActive ? 'bg-slate-700 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`;
+                btn.innerText = `Day ${day.id}`;
+                btn.onclick = () => { tripData.currentDay = day.id; render(); saveToCloud(); };
+                tabs.appendChild(btn);
+            });
+
+            const day = tripData.days.find(d => d.id === tripData.currentDay);
+            
+            let dailyHotelText = day.hotelName || "未设置住宿";
+            let hotelLinkHtml = day.hotelLink ? `<a href="${day.hotelLink}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-1.5 bg-blue-50 px-1.5 py-0.5 rounded flex items-center justify-center transition-colors shadow-sm" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : '';
+            
+            let hotelSettingsBento = "";
+            if (!day.hotelName) {
+                hotelSettingsBento = `
+                <div onclick="setDayHotel()" class="bg-slate-700 text-white rounded-3xl p-5 shadow-md flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors col-span-1 md:col-span-2 group">
+                    <div class="min-w-0 pr-4">
+                        <p class="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1.5">住宿设置</p>
+                        <h3 class="font-bold text-sm md:text-base truncate group-hover:text-blue-200 transition-colors"><i class="fas fa-cog mr-1.5 opacity-80"></i> 设置当日住宿</h3>
+                    </div>
+                    <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><i class="fas fa-hotel text-xl text-white"></i></div>
+                </div>`;
+            }
+
+            main.innerHTML = `
+                <div class="flex justify-between items-center px-1 mb-4">
+                    <div>
+                        <h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">行程安排</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">时间轴总览</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="exportItineraryPDF()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center"><i class="fas fa-file-pdf mr-1.5"></i> 导出 PDF</button>
+                        <button onclick="exportItineraryJSON()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center hidden md:flex"><i class="fas fa-code mr-1.5"></i> 导出 JSON</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm col-span-1 md:col-span-2 relative overflow-hidden">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-slate-50 rounded-full opacity-50 pointer-events-none"></div>
+                        <span class="text-xs font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-lg">${day.date}</span>
+                        <h2 class="text-2xl md:text-3xl font-poppins font-black text-slate-800 mt-3 mb-3 break-words">${day.title}</h2>
+                        
+                        <div onclick="setDayHotel()" class="inline-flex items-center bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs font-bold text-slate-500 max-w-full cursor-pointer hover:bg-slate-100 hover:border-slate-200 transition-all shadow-sm">
+                            <i class="fas fa-bed text-blue-500 mr-2 flex-shrink-0"></i> 
+                            <span class="flex-shrink-0 whitespace-nowrap">当晚住宿：</span>
+                            <span class="text-slate-700 ml-1 truncate min-w-0">${dailyHotelText}</span>
+                            ${hotelLinkHtml}
+                        </div>
+                    </div>
+
+                    ${hotelSettingsBento}
+
+                    <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm col-span-1 md:col-span-2">
+                        <div class="relative">
+                            <div class="timeline-line"></div>
+                            <div id="timeline-events" class="space-y-10 pb-2">
+                                ${(!day.events || day.events.length === 0) ? `
+                                <div class="pl-10 py-6 text-center">
+                                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300"><i class="fas fa-calendar-times"></i></div>
+                                    <p class="text-sm font-medium text-slate-500">今天还没有安排行程哦<br>点击下方按钮添加</p>
+                                </div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="addGenericEvent()" class="bg-white border border-slate-200 border-dashed rounded-3xl p-5 shadow-sm hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center gap-3 group min-h-[100px]">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><i class="fas fa-plus text-lg"></i></div>
+                        <span class="text-xs font-bold text-slate-600 group-hover:text-blue-600">+ 添加活动/交通</span>
+                    </button>
+                    <button onclick="addMealEvent()" class="bg-white border border-slate-200 border-dashed rounded-3xl p-5 shadow-sm hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center gap-3 group min-h-[100px]">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><i class="fas fa-utensils text-lg"></i></div>
+                        <span class="text-xs font-bold text-slate-600 group-hover:text-blue-600">+ 添加餐饮建议</span>
+                    </button>
+                </div>
+            `;
+
+            const eventsContainer = main.querySelector('#timeline-events');
+            if (day.events) {
+                day.events.forEach((ev, idx) => {
+                    const div = document.createElement('div');
+                    div.className = "timeline-item group w-full";
+                    let dotColor = "bg-slate-300";
+                    if(ev.type === 'flight') dotColor = "bg-blue-500";
+                    if(ev.type === 'activity') dotColor = "bg-rose-500";
+                    if(ev.type === 'hotel') dotColor = "bg-indigo-600";
+                    if(ev.type === 'meal_options') dotColor = "bg-amber-400";
+                    if(ev.type === 'transport') dotColor = "bg-emerald-400";
+
+                    let labelHtml = window.getLabelHtml(ev.label);
+
+                    div.innerHTML = `
+                        <div class="timeline-dot ${dotColor}"></div>
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex-1 min-w-0"> 
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="text-[10px] md:text-[11px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">${ev.time}</span>${labelHtml}
+                                </div>
+                                ${ev.type === 'meal_options' ? `
+                                    <h4 class="font-bold text-slate-800 mb-3 break-words text-sm md:text-base">${ev.title}</h4>
+                                    <div class="space-y-2 md:space-y-3">${ev.options.map(opt => `
+                                        <div class="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100 shadow-sm w-full">
+                                            <div class="flex justify-between items-start md:items-center mb-1 gap-2">
+                                                <a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-blue-500 leading-tight">${opt.title} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a>
+                                                <span class="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-md font-bold whitespace-nowrap flex-shrink-0 mt-0.5 md:mt-0">⭐ ${opt.rating || '4.5'}</span>
+                                            </div>
+                                            <div class="text-[10px] text-slate-500 font-medium break-words leading-relaxed mt-1">人均: ${opt.price} | 必点: ${opt.dishes}</div>
+                                        </div>
+                                    `).join('')}</div>
+                                ` : `
+                                    <div class="pr-2 md:pr-6">
+                                        <a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-blue-500 transition-colors">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a>
+                                        <p class="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2 leading-relaxed font-medium break-words">${ev.desc || ''}</p>
+                                    </div>
+                                `}
+                                <div contenteditable="true" class="mt-3 pt-3 border-t border-dashed border-slate-200 text-[11px] text-slate-500 focus:outline-none focus:text-slate-800 transition-colors break-words w-full" onblur="updateItemNote(${idx}, this.innerText)" placeholder="点击添加行程备注...">${ev.note || ""}</div>
+                                <div class="mt-2 bg-slate-50 p-2 md:p-3 rounded-2xl text-xs border border-slate-100 flex justify-between items-center group/review min-w-0">
+                                    ${ev.review_rating ? `<div class="flex-1 min-w-0 pr-2 truncate"><span class="text-amber-400 text-[10px] tracking-widest mr-1 md:mr-2 flex-shrink-0">${'★'.repeat(ev.review_rating)}${'☆'.repeat(5-ev.review_rating)}</span> <span class="text-slate-600 font-medium truncate">${ev.review_text || '已打卡'}</span></div><button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors sm:opacity-0 group-hover/review:opacity-100 flex-shrink-0"><i class="fas fa-pen text-[10px]"></i></button>` : `<button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 font-bold text-[10px] transition-colors whitespace-nowrap"><i class="fas fa-star mr-1"></i> 游后点评</button>`}
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                                <button onclick="editEvent(${idx})" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-blue-500 hover:border-blue-200 shadow-sm transition-all"><i class="fas fa-pen text-[10px]"></i></button>
+                                <button onclick="requestDeleteItem(${idx})" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-200 shadow-sm transition-all"><i class="fas fa-trash text-[10px]"></i></button>
+                            </div>
+                        </div>
+                    `;
+                    eventsContainer.appendChild(div);
+                });
+            }
+        };
+
+        const renderExpenses = () => {
+            const main = document.getElementById('main-container');
+            const members = window.getMembers();
+            
+            // Setup dynamic stats dictionary
+            let stats = {};
+            members.forEach(m => stats[m] = { paid: 0, used: 0 });
+            
+            // Calculate expenses dynamically
+            tripData.expenses.forEach(e => {
+                let amt = e.currency === 'CNY' ? e.amount : (e.amount * (parseFloat(e.exchangeRate) || 0.048));
+                
+                // Case-insensitive mapping for backward compatibility
+                let payer = e.payer;
+                let matchedPayer = members.find(m => m.toLowerCase() === payer?.toLowerCase());
+                if (matchedPayer) payer = matchedPayer;
+
+                let consumer = e.consumers;
+                let matchedConsumer = members.find(m => m.toLowerCase() === consumer?.toLowerCase());
+                if (matchedConsumer) consumer = matchedConsumer;
+
+                // Track payer
+                if (!stats[payer]) stats[payer] = { paid: 0, used: 0 };
+                stats[payer].paid += amt;
+
+                // Track consumer
+                if (consumer === '共同' || consumer === 'Both' || consumer === 'together') {
+                    let split = amt / members.length;
+                    members.forEach(m => { stats[m].used += split; });
+                } else {
+                    if (!stats[consumer]) stats[consumer] = { paid: 0, used: 0 };
+                    stats[consumer].used += amt;
+                }
+            });
+
+            // Build Settlement HTML
+            let settlementHtml = '';
+            members.forEach(m => {
+                let net = stats[m].paid - stats[m].used;
+                if (net > 0) {
+                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应收: <span class="text-white font-bold ml-1">+¥${net.toFixed(1)}</span></p>`;
+                } else if (net < 0) {
+                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应付: <span class="text-rose-300 font-bold ml-1">-¥${Math.abs(net).toFixed(1)}</span></p>`;
+                } else {
+                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m}: <span class="text-emerald-300 font-bold ml-1">结清</span></p>`;
+                }
+            });
+            if (!settlementHtml) settlementHtml = '<span class="text-emerald-300 font-black">暂无记账</span>';
+
+            // Build dynamic member boxes
+            let memberBoxesHtml = members.map(m => `
+                <div class="bg-white border border-slate-200 p-4 md:p-5 rounded-3xl shadow-sm flex flex-col col-span-1 justify-center">
+                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1.5 truncate">${m}</p>
+                    <p class="text-[11px] md:text-xs text-slate-500 mb-0.5">已付: ¥${stats[m].paid.toFixed(1)}</p>
+                    <p class="text-[11px] md:text-xs text-slate-500 mb-2">消费: ¥${stats[m].used.toFixed(1)}</p>
+                    <p class="font-black text-xs md:text-sm ${stats[m].paid - stats[m].used >= 0 ? 'text-emerald-600' : 'text-rose-600'} border-t border-slate-100 pt-2 truncate">净额: ${stats[m].paid - stats[m].used > 0 ? '+' : ''}${(stats[m].paid - stats[m].used).toFixed(1)}</p>
+                </div>
+            `).join('');
+
+            main.innerHTML = `
+                <div class="flex justify-between items-center px-1 mb-4 mt-2">
+                    <div>
+                        <h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">财务记账</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">账单与结算</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="exportCSV()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center hidden md:flex"><i class="fas fa-file-csv mr-1.5"></i> 导出 CSV</button>
+                        <button onclick="addExpense()" class="bg-blue-500 text-white px-4 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-blue-600 transition-colors flex items-center"><i class="fas fa-plus mr-1.5"></i> 新增账目</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-slate-700 text-white p-5 md:p-6 rounded-3xl shadow-sm col-span-2 md:col-span-2 flex justify-between items-center overflow-hidden relative">
+                        <div class="absolute -right-4 -top-4 w-24 h-24 bg-white/5 rounded-full pointer-events-none"></div>
+                        <div class="min-w-0 pr-2 z-10 flex-1">
+                            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">结算状态</p>
+                            <div class="flex flex-col">${settlementHtml}</div>
+                        </div>
+                        <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 z-10"><i class="fas fa-piggy-bank text-xl text-white"></i></div>
+                    </div>
+                    ${memberBoxesHtml}
+                </div>
+                
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">消费明细</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="expense-list-container"></div>
+            `;
+            
+            const listContainer = document.getElementById('expense-list-container');
+            if (!tripData.expenses || tripData.expenses.length === 0) {
+                listContainer.innerHTML = `
+                <div class="col-span-full py-10 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed">
+                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-2"><i class="fas fa-receipt text-lg"></i></div>
+                    <p class="text-xs font-medium text-slate-500">暂无记账记录</p>
+                </div>`;
+            } else {
+                [...tripData.expenses].reverse().forEach((e, revIdx) => {
+                    const idx = tripData.expenses.length - 1 - revIdx;
+                    const div = document.createElement('div');
+                    div.className = "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center group transition-all";
+                    const cnyVal = e.currency === 'CNY' ? e.amount : (e.amount * parseFloat(e.exchangeRate)).toFixed(2);
+                    let iconCls = 'fa-receipt';
+                    if(e.category){
+                        if(e.category.includes('餐饮')) iconCls = 'fa-utensils';
+                        else if(e.category.includes('交通')) iconCls = 'fa-train';
+                        else if(e.category.includes('购物')) iconCls = 'fa-shopping-bag';
+                        else if(e.category.includes('住宿')) iconCls = 'fa-bed';
+                        else if(e.category.includes('娱乐')) iconCls = 'fa-ticket-alt';
+                    }
+
+                    div.innerHTML = `
+                        <div class="flex items-center gap-4 min-w-0">
+                            <div class="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors"><i class="fas ${iconCls}"></i></div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-bold text-slate-800 truncate mb-0.5">${e.item}</p>
+                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative">
+                            <p class="${e.currency === 'JPY' ? 'text-slate-600' : 'text-slate-800'} font-black text-sm whitespace-nowrap">${e.currency === 'JPY' ? '¥' : 'RMB'} ${e.amount}</p>
+                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">≈ ¥${cnyVal}</p>
+                            <button onclick="deleteExpense(${idx})" class="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-lg text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:text-red-500 shadow-sm flex items-center justify-center"><i class="fas fa-trash"></i></button>
+                        </div>
+                    `;
+                    listContainer.appendChild(div);
+                });
+            }
+        };
+
+        window.openModal = (title, subtitle, fields, onConfirm) => {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-subtitle').innerText = subtitle;
+            const content = document.getElementById('modal-content');
+            content.innerHTML = '';
+            fields.forEach(f => {
+                const wrap = document.createElement('div');
+                let inputHtml = '';
+                if (f.type === 'select') {
+                    inputHtml = `<div class="relative"><select id="f-${f.id}" class="appearance-none w-full p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10" onchange="${f.onchange || ''}">${f.options.map(o => `<option value="${o}" ${o===f.value?'selected':''}>${o}</option>`).join('')}</select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400"><i class="fas fa-chevron-down text-[10px]"></i></div></div>`;
+                } else if (f.type === 'info') {
+                    inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed">${f.value}</p></div>`;
+                } else if (f.type === 'textarea') {
+                    inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
+                } else if (f.type === 'image') {
+                    inputHtml = `
+                    <div class="flex items-center gap-3">
+                        <div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            ${f.value ? `<img src="${f.value}" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm">
+                                <i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片或截图
+                                <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event, '${f.id}')">
+                            </label>
+                            <input type="hidden" id="f-${f.id}" value="${f.value || ''}">
+                        </div>
+                    </div>`;
+                } else {
+                    inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
+                }
+                wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
+                content.appendChild(wrap);
+            });
+            document.getElementById('modal-confirm-btn').onclick = () => {
+                const vals = {};
+                fields.forEach(f => { const el = document.getElementById(`f-${f.id}`); if(el) vals[f.id] = el.value; });
+                onConfirm(vals);
+                closeModal();
+            };
+            const m = document.getElementById('custom-modal');
+            m.classList.remove('hidden');
+            m.classList.add('active');
+            content.scrollTop = 0;
+        };
+
+        window.closeModal = () => {
+            const m = document.getElementById('custom-modal');
+            m.classList.remove('active');
+            setTimeout(() => { m.classList.add('hidden'); }, 200);
+        };
+
+        window.handleImageUpload = (event, inputId) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('preview-' + inputId).innerHTML = `<i class="fas fa-spinner fa-spin text-blue-500"></i>`;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800; const MAX_HEIGHT = 800;
+                    let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
+                    else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+                    canvas.width = width; canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const base64Str = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('f-' + inputId).value = base64Str;
+                    document.getElementById('preview-' + inputId).innerHTML = `<img src="${base64Str}" class="w-full h-full object-cover">`;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.openSettings = () => {
+            openModal("设置", "管理您的私人数据库及行程信息", [
+                { id: 'tName', label: '行程名称', value: tripData?.tripName || '', placeholder: '例如：漫游计划 (留空则隐藏后缀)' },
+                { id: 'sid', label: '当前行程同步码 (ID)', value: tripId || '', placeholder: '例如: WEI-TRIP' },
+                { id: 'spin', label: '访问密码 (PIN)', value: tripPin || '', placeholder: '4位数字' },
+                { id: 'firebase', type: 'textarea', label: 'Firebase Config (JSON)', value: localStorage.getItem('firebase_custom_config_v2') || '', placeholder: '在此粘贴你的数据库 Config，清空则断开云端' }
+            ], (v) => {
+                let reloadNeeded = false;
+                
+                if (v.firebase.trim() !== (localStorage.getItem('firebase_custom_config_v2') || '')) {
+                    v.firebase.trim() === '' ? localStorage.removeItem('firebase_custom_config_v2') : localStorage.setItem('firebase_custom_config_v2', v.firebase);
+                    reloadNeeded = true;
+                }
+
+                const newId = v.sid.trim().toUpperCase();
+                const newPin = v.spin.trim();
+                if (newId !== tripId || newPin !== tripPin) {
+                    tripId = newId; tripPin = newPin;
+                    localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+                    reloadNeeded = true;
+                }
+
+                if (tripData && v.tName.trim() !== (tripData.tripName || '')) {
+                    tripData.tripName = v.tName.trim();
+                    saveToCloud();
+                    if (!reloadNeeded) unlockApp(); // Update UI without reload if only name changed
+                }
+
+                if (reloadNeeded) location.reload(); 
+            });
+        };
+
+        window.exportCSV = () => {
+            if (!tripData.expenses || tripData.expenses.length === 0) return;
+            let csvContent = "\uFEFF日期,消费项目,分类,金额,币种,汇率,折合人民币(CNY),支付人,使用人\n";
+            tripData.expenses.forEach(e => {
+                let amountInCNY = e.currency === 'CNY' ? e.amount : (e.amount * parseFloat(e.exchangeRate || 0.048)).toFixed(2);
+                let row = `"${e.date}","${e.item?e.item.replace(/"/g, '""'):''}","${e.category||'其他'}","${e.amount}","${e.currency}","${e.exchangeRate||'1.0'}","${amountInCNY}","${e.payer}","${e.consumers}"`;
+                csvContent += row + "\n";
+            });
+            const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+            const link = document.createElement("a"); link.href = url; link.download = "WanderSync_Finance.csv";
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        };
+
+        window.exportItineraryJSON = () => {
+            const url = URL.createObjectURL(new Blob([JSON.stringify(tripData, null, 2)], { type: "application/json;charset=utf-8;" }));
+            const link = document.createElement("a"); link.href = url; link.download = "WanderSync_Backup.json";
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        };
+
+        window.exportItineraryPDF = () => {
+            const printArea = document.getElementById('print-area');
+            let html = `<div class="text-center mb-10 border-b-4 border-slate-800 pb-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight font-poppins">${tripData.tripName || "WanderSync 行程计划"}</h1><p class="text-slate-500 mt-2 tracking-widest uppercase font-bold">完整行程总览</p></div>`;
+            
+            tripData.days.forEach(day => {
+                let dailyHotelText = day.hotelName || "未设置住宿";
+                html += `<div class="mb-10 break-inside-avoid"><div class="bg-slate-50 p-4 rounded-2xl mb-6 flex items-end justify-between border-l-4 border-slate-600"><div><span class="text-xs font-black text-slate-500 uppercase tracking-widest">${day.date}</span><h2 class="text-2xl font-black text-slate-800 mt-1">Day ${day.id} - ${day.title}</h2></div><span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">🏨 住宿: ${dailyHotelText}</span></div><div class="space-y-4 pl-4 border-l-2 border-slate-200 ml-2">`;
+                if (day.events && day.events.length > 0) {
+                    day.events.forEach(ev => {
+                        let labelText = window.getLabelHtml(ev.label);
+                        let contentHtml = ev.type === 'meal_options' ? ev.options.map(o => `<div class="mt-1 flex items-center text-xs text-slate-600"><span class="font-bold mr-2 text-slate-800">• ${o.title}</span> (人均: ${o.price} | 必点: ${o.dishes})</div>`).join('') : (ev.desc ? `<p class="text-xs text-slate-600 mt-1">${ev.desc}</p>` : '');
+                        let extraHtml = (ev.note ? `<p class="text-[11px] text-blue-600 mt-1.5 font-bold">📝 ${ev.note}</p>` : '') + (ev.review_rating ? `<p class="text-[11px] text-amber-600 mt-1 font-bold">⭐ ${'★'.repeat(ev.review_rating)} - ${ev.review_text}</p>` : '');
+                        html += `<div class="relative pb-4"><div class="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-slate-400 border-2 border-white"></div><div class="flex items-center mb-1"><span class="font-black text-slate-800 w-12 text-sm">${ev.time}</span>${labelText}<span class="font-bold text-slate-800 text-sm">${ev.title}</span></div><div class="pl-12">${contentHtml}${extraHtml}</div></div>`;
+                    });
+                } else { html += `<p class="text-sm text-slate-400">本日暂无安排</p>`; }
+                html += `</div></div>`;
+            });
+            printArea.innerHTML = html;
+            try { window.print(); } catch (err) { alert('当前环境拦截了系统打印功能'); }
+        };
+
+        // Form Actions with Dynamic Members
+        window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
+        window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
+        
+        window.addGenericEvent = () => { 
+            openModal("添加行程", "", [
+                { id: 'time', label: '时间', value: '12:00' }, 
+                { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
+                { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
+                { id: 'title', label: '标题' }, { id: 'desc', label: '描述' }, { id: 'link', label: '地图链接 (可选)' }
+            ], (v) => { 
+                const day = tripData.days.find(d => d.id === tripData.currentDay); 
+                day.events.push({ ...v, note: "" }); 
+                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
+            }); 
+        };
+        
+        window.addMealEvent = () => { 
+            openModal("添加餐饮", "", [
+                { id: 'time', label: '时间', value: '12:00' }, 
+                { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
+                { id: 't1', label: '餐厅名称', placeholder: '必填' },
+                { id: 'l1', label: '餐厅链接', placeholder: '选填' },
+                { id: 'p1', label: '人均参考价', placeholder: '￥' }
+            ], (v) => { 
+                if(!v.t1) return; 
+                const day = tripData.days.find(d => d.id === tripData.currentDay); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); 
+                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
+            }); 
+        };
+        
+        window.addExpense = () => { 
+            openModal("新增记账", "", [
+                { id: 'item', label: '消费项目' }, 
+                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
+                { id: 'amount', label: '金额', inputType: 'number' }, 
+                { id: 'currency', label: '币种', type: 'select', options: ['JPY', 'CNY'] }, 
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] }
+            ], (v) => { 
+                if (!v.item || !v.amount) return; 
+                tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: v.item, category: v.category, amount: parseFloat(v.amount), currency: v.currency, exchangeRate: "0.048", payer: v.payer, consumers: v.consumers }); 
+                saveToCloud(); render(); 
+            }); 
+        };
+
+        window.editEvent = (idx) => { 
+            const day = tripData.days.find(d => d.id === tripData.currentDay); const ev = day.events[idx]; 
+            if(ev.type === 'meal_options') {
+                openModal("编辑餐饮", "", [{ id: 'time', label: '时间', value: ev.time }, { id: 'title', label: '餐厅名', value: ev.options[0].title }], (v) => { ev.time = v.time; ev.options[0].title = v.title; day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); });
+            } else {
+                openModal("编辑", "", [{ id: 'time', label: '时间', value: ev.time }, { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label }, { id: 'title', label: '标题', value: ev.title }, { id: 'desc', label: '描述', value: ev.desc }], (v) => { Object.assign(ev, v); day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); }); 
+            }
+        };
+
+        window.requestDeleteItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定删除此项？' }], () => { tripData.days.find(d => d.id === tripData.currentDay).events.splice(idx, 1); saveToCloud(); render(); }); };
+        window.deleteExpense = (idx) => { openModal("删除账目", "", [{ id: 'i', type: 'info', label: '确认', value: '确定删除？' }], () => { tripData.expenses.splice(idx, 1); saveToCloud(); render(); }); };
+        
+        window.setDayHotel = () => { 
+            const day = tripData.days.find(d => d.id === tripData.currentDay);
+            openModal("设置当日住宿", "可以在行程中快速记录酒店位置", [
+                { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
+                { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' }
+            ], (v) => { 
+                day.hotelName = v.t; 
+                day.hotelLink = v.l;
+                saveToCloud(); render(); 
+            });
+        };
+
+        window.addShoppingItem = () => {
+            openModal("添加商品", "", [
+                { id: 'name', label: '商品名称', placeholder: '例如：SK-II 神仙水' },
+                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'] },
+                { id: 'price', label: '参考价', placeholder: '例如：￥899' },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: '' },
+                { id: 'note', label: '备注', placeholder: '例如：松本清有售...' }
+            ], (v) => {
+                if(!v.name) return;
+                if(!tripData.shoppingList) tripData.shoppingList = [];
+                tripData.shoppingList.push({ id: Date.now(), ...v, bought: false });
+                saveToCloud(); render();
+            });
+        };
+
+        window.editShoppingItem = (idx) => {
+            const item = tripData.shoppingList[idx];
+            openModal("编辑商品", "", [
+                { id: 'name', label: '商品名称', value: item.name },
+                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'], value: item.source },
+                { id: 'price', label: '参考价', value: item.price },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
+                { id: 'note', label: '备注', value: item.note }
+            ], (v) => { Object.assign(item, v); saveToCloud(); render(); });
+        };
+
+        window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; saveToCloud(); render(); };
+        window.deleteShoppingItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定移除此商品吗？' }], () => { tripData.shoppingList.splice(idx, 1); saveToCloud(); render(); }); };
+
+        const checkAuthAndProceed = () => {
+            onAuthStateChanged(auth, async (u) => {
+                user = u;
+                if (tripId) { 
+                    startSync(tripId); 
+                } else { 
+                    const loginScreen = document.getElementById('login-screen');
+                    loginScreen.classList.remove('hidden'); 
+                    loginScreen.classList.add('active');
+                }
+            });
+            (async () => {
+                try { await signInAnonymously(auth); } 
+                catch (e) { console.error("Auth Error:", e); loadLocalFallback(); }
+            })();
+        };
+
+        const savedConfig = localStorage.getItem('firebase_custom_config_v2');
+        if (savedConfig) {
+            if (initFirebase(savedConfig)) { checkAuthAndProceed(); } 
+            else { 
+                const configScreen = document.getElementById('config-screen');
+                configScreen.classList.remove('hidden'); 
+                configScreen.classList.add('active');
+            }
+        } else { 
+            const configScreen = document.getElementById('config-screen');
+            configScreen.classList.remove('hidden'); 
+            configScreen.classList.add('active');
+        }
+    </script>
+</body>
+</html>
