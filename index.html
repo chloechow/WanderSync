@@ -550,20 +550,34 @@
             });
 
             const day = tripData.days.find(d => d.id === tripData.currentDay);
+            const isLastDay = day.id === tripData.days[tripData.days.length - 1].id;
             
-            let dailyHotelText = day.hotelName || "未设置住宿";
+            let dailyHotelText = day.hotelName || "点击设置当日住宿";
             let hotelLinkHtml = day.hotelLink ? `<a href="${day.hotelLink}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-1.5 bg-blue-50 px-1.5 py-0.5 rounded flex items-center justify-center transition-colors shadow-sm" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : '';
             
             let hotelSettingsBento = "";
-            if (!day.hotelName) {
-                hotelSettingsBento = `
-                <div onclick="setDayHotel()" class="bg-slate-700 text-white rounded-3xl p-5 shadow-md flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors col-span-1 md:col-span-2 group">
-                    <div class="min-w-0 pr-4">
-                        <p class="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1.5">住宿设置</p>
-                        <h3 class="font-bold text-sm md:text-base truncate group-hover:text-blue-200 transition-colors"><i class="fas fa-cog mr-1.5 opacity-80"></i> 设置当日住宿</h3>
+            let hotelBadgeHtml = "";
+
+            if (!isLastDay) {
+                hotelBadgeHtml = `
+                    <div onclick="setDayHotel()" class="inline-flex items-center bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs font-bold text-slate-500 max-w-full cursor-pointer hover:bg-slate-100 hover:border-slate-200 transition-all shadow-sm">
+                        <i class="fas fa-bed text-blue-500 mr-2 flex-shrink-0"></i> 
+                        <span class="flex-shrink-0 whitespace-nowrap">当晚住宿：</span>
+                        <span class="text-slate-700 ml-1 truncate min-w-0">${dailyHotelText}</span>
+                        ${hotelLinkHtml}
                     </div>
-                    <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><i class="fas fa-hotel text-xl text-white"></i></div>
-                </div>`;
+                `;
+
+                if (!day.hotelName) {
+                    hotelSettingsBento = `
+                    <div onclick="setDayHotel()" class="bg-slate-700 text-white rounded-3xl p-5 shadow-md flex justify-between items-center cursor-pointer hover:bg-slate-800 transition-colors col-span-1 md:col-span-2 group">
+                        <div class="min-w-0 pr-4">
+                            <p class="text-[10px] font-bold opacity-60 uppercase tracking-widest mb-1.5">住宿设置</p>
+                            <h3 class="font-bold text-sm md:text-base truncate group-hover:text-blue-200 transition-colors"><i class="fas fa-cog mr-1.5 opacity-80"></i> 设置当日住宿</h3>
+                        </div>
+                        <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform"><i class="fas fa-hotel text-xl text-white"></i></div>
+                    </div>`;
+                }
             }
 
             main.innerHTML = `
@@ -583,13 +597,7 @@
                         <div class="absolute -right-4 -top-4 w-24 h-24 bg-slate-50 rounded-full opacity-50 pointer-events-none"></div>
                         <span class="text-xs font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-lg">${day.date}</span>
                         <h2 class="text-2xl md:text-3xl font-poppins font-black text-slate-800 mt-3 mb-3 break-words">${day.title}</h2>
-                        
-                        <div onclick="setDayHotel()" class="inline-flex items-center bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs font-bold text-slate-500 max-w-full cursor-pointer hover:bg-slate-100 hover:border-slate-200 transition-all shadow-sm">
-                            <i class="fas fa-bed text-blue-500 mr-2 flex-shrink-0"></i> 
-                            <span class="flex-shrink-0 whitespace-nowrap">当晚住宿：</span>
-                            <span class="text-slate-700 ml-1 truncate min-w-0">${dailyHotelText}</span>
-                            ${hotelLinkHtml}
-                        </div>
+                        ${hotelBadgeHtml}
                     </div>
 
                     ${hotelSettingsBento}
@@ -932,9 +940,12 @@
             const printArea = document.getElementById('print-area');
             let html = `<div class="text-center mb-10 border-b-4 border-slate-800 pb-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight font-poppins">${tripData.tripName || "WanderSync 行程计划"}</h1><p class="text-slate-500 mt-2 tracking-widest uppercase font-bold">完整行程总览</p></div>`;
             
-            tripData.days.forEach(day => {
+            tripData.days.forEach((day, index) => {
+                const isLastDayPdf = index === tripData.days.length - 1;
                 let dailyHotelText = day.hotelName || "未设置住宿";
-                html += `<div class="mb-10 break-inside-avoid"><div class="bg-slate-50 p-4 rounded-2xl mb-6 flex items-end justify-between border-l-4 border-slate-600"><div><span class="text-xs font-black text-slate-500 uppercase tracking-widest">${day.date}</span><h2 class="text-2xl font-black text-slate-800 mt-1">Day ${day.id} - ${day.title}</h2></div><span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">🏨 住宿: ${dailyHotelText}</span></div><div class="space-y-4 pl-4 border-l-2 border-slate-200 ml-2">`;
+                let hotelBadgePdf = isLastDayPdf ? '' : `<span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">🏨 住宿: ${dailyHotelText}</span>`;
+
+                html += `<div class="mb-10 break-inside-avoid"><div class="bg-slate-50 p-4 rounded-2xl mb-6 flex items-end justify-between border-l-4 border-slate-600"><div><span class="text-xs font-black text-slate-500 uppercase tracking-widest">${day.date}</span><h2 class="text-2xl font-black text-slate-800 mt-1">Day ${day.id} - ${day.title}</h2></div>${hotelBadgePdf}</div><div class="space-y-4 pl-4 border-l-2 border-slate-200 ml-2">`;
                 if (day.events && day.events.length > 0) {
                     day.events.forEach(ev => {
                         let labelText = window.getLabelHtml(ev.label);
@@ -1001,7 +1012,13 @@
             if(ev.type === 'meal_options') {
                 openModal("编辑餐饮", "", [{ id: 'time', label: '时间', value: ev.time }, { id: 'title', label: '餐厅名', value: ev.options[0].title }], (v) => { ev.time = v.time; ev.options[0].title = v.title; day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); });
             } else {
-                openModal("编辑", "", [{ id: 'time', label: '时间', value: ev.time }, { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label }, { id: 'title', label: '标题', value: ev.title }, { id: 'desc', label: '描述', value: ev.desc }], (v) => { Object.assign(ev, v); day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); }); 
+                openModal("编辑", "", [
+                    { id: 'time', label: '时间', value: ev.time }, 
+                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label }, 
+                    { id: 'title', label: '标题', value: ev.title }, 
+                    { id: 'desc', label: '描述', value: ev.desc },
+                    { id: 'link', label: '地图链接 (可选)', value: ev.link || '' }
+                ], (v) => { Object.assign(ev, v); day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); }); 
             }
         };
 
