@@ -52,7 +52,7 @@
 </head>
 <body class="print:bg-white print:pb-0 pb-32 w-full max-w-full">
 
-    <!-- Step 1: Database Config Screen (BYOD) -->
+    <!-- Step 1: Database Config Screen -->
     <div id="config-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
@@ -99,6 +99,7 @@
             </div>
             <div class="space-y-3 mb-6">
                 <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label><input id="init-trip-name" type="text" placeholder="例如：关西漫游 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">起始日期 (可选)</label><input id="init-start-date" type="date" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员列表 (用逗号分隔，人数不限)</label><input id="init-members" type="text" placeholder="例如：张三, 李四, 王五" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label><input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
             </div>
@@ -191,6 +192,22 @@
         let tripData = null;
         let syncUnsubscribe = null; 
 
+        // Core Helper: Date Calculation
+        window.formatDateFromStart = (startDateStr, dayOffset) => {
+            if (!startDateStr) return `Day ${dayOffset + 1}`;
+            const date = new Date(startDateStr);
+            if (isNaN(date.getTime())) return `Day ${dayOffset + 1}`;
+            date.setDate(date.getDate() + dayOffset);
+            return `${date.getMonth() + 1}/${date.getDate()}`;
+        };
+
+        window.recalculateAllDates = () => {
+            if (!tripData || !tripData.settings || !tripData.settings.startDate) return;
+            tripData.days.forEach((day, index) => {
+                day.date = window.formatDateFromStart(tripData.settings.startDate, index);
+            });
+        };
+
         // Core Helper: Dynamic Multi-Member Setup
         window.getMembers = () => {
             if (tripData && tripData.settings && tripData.settings.members && tripData.settings.members.length > 0) {
@@ -202,14 +219,13 @@
         // UI Helper for coloring labels dynamically
         window.getLabelHtml = (label) => {
             if (!label) return '';
-            let normalizedLabel = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase(); // Normalize casing for matching
+            let normalizedLabel = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase(); 
             
             if (label === '共同' || label.toLowerCase() === 'together') {
                 return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`;
             }
 
             const members = window.getMembers();
-            // Try case-insensitive matching with dynamically extracted members
             const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase());
             const displayLabel = idx !== -1 ? members[idx] : label;
 
@@ -230,11 +246,11 @@
         const initialDefaultData = {
             currentDay: 1, pin: "", expenses: [], shoppingList: [],
             isGeneric: true, tripName: "漫游计划",
-            settings: { members: ['成员 A', '成员 B'] },
+            settings: { members: ['成员 A', '成员 B'], startDate: "" },
             days: [
-                { id: 1, date: "Day 1", title: "第一天行程", events: [], hotelName: "", hotelLink: "" },
-                { id: 2, date: "Day 2", title: "第二天行程", events: [], hotelName: "", hotelLink: "" },
-                { id: 3, date: "Day 3", title: "第三天行程", events: [], hotelName: "", hotelLink: "" }
+                { id: 1, date: "Day 1", title: "第一天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" },
+                { id: 2, date: "Day 2", title: "第二天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" },
+                { id: 3, date: "Day 3", title: "第三天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }
             ]
         };
 
@@ -313,7 +329,6 @@
             render();
         };
 
-        // Initialization of brand new generic workspace
         window.cancelInitWorkspace = () => {
             document.getElementById('init-screen').classList.add('hidden');
             document.getElementById('login-screen').classList.remove('hidden');
@@ -323,6 +338,7 @@
 
         window.confirmInitWorkspace = () => {
             const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划";
+            const sDate = document.getElementById('init-start-date').value;
             const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B";
             const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
             
@@ -331,14 +347,17 @@
 
             let newDays = [];
             for(let i=1; i<=dCount; i++) {
-                newDays.push({ id: i, date: `Day ${i}`, title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "" });
+                newDays.push({ id: i, date: window.formatDateFromStart(sDate, i - 1), title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
             }
 
             tripData = {
                 isGeneric: true,
                 pin: pendingNewPin,
                 tripName: tName,
-                settings: { members: membersList.length > 0 ? membersList : ['我'] },
+                settings: { 
+                    members: membersList.length > 0 ? membersList : ['我'],
+                    startDate: sDate 
+                },
                 currentDay: 1,
                 expenses: [],
                 shoppingList: [],
@@ -388,13 +407,12 @@
                             cloudData.isGeneric = true;
                             cloudData.tripName = cloudData.tripName || "漫游计划";
                             
-                            // 动态扫描事件中的所有人名标签
                             let membersSet = new Set();
                             (cloudData.days || []).forEach(d => {
                                 (d.events || []).forEach(e => {
                                     if (e.label && e.label !== 'together' && e.label !== '共同') {
                                         membersSet.add(e.label.charAt(0).toUpperCase() + e.label.slice(1).toLowerCase());
-                                        e.label = e.label.charAt(0).toUpperCase() + e.label.slice(1).toLowerCase(); // 顺手格式化大小写
+                                        e.label = e.label.charAt(0).toUpperCase() + e.label.slice(1).toLowerCase(); 
                                     }
                                 });
                             });
@@ -404,13 +422,14 @@
                             
                             let dynamicMembers = Array.from(membersSet).filter(m => m !== '共同' && m !== 'Together');
                             if (dynamicMembers.length === 0) dynamicMembers = ['成员 A', '成员 B'];
-                            cloudData.settings = { members: dynamicMembers };
+                            cloudData.settings = { members: dynamicMembers, startDate: "" };
 
                             if (cloudData.oimachiHotel && cloudData.oimachiHotel.isSet) {
                                 (cloudData.days || []).forEach(d => {
                                     if (d.id >= 3 && d.id <= 5 && !d.hotelName) {
                                         d.hotelName = cloudData.oimachiHotel.title;
                                         d.hotelLink = cloudData.oimachiHotel.link || "";
+                                        d.hotelNote = cloudData.oimachiHotel.note || "";
                                     }
                                 });
                             }
@@ -420,9 +439,7 @@
                         localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
                         tripData = cloudData;
                         
-                        if (needsMigration) {
-                            saveToCloud(); // 将洗白提纯后的标准格式重新存回云端
-                        }
+                        if (needsMigration) { saveToCloud(); }
 
                         document.getElementById('sync-status').innerText = '已同步';
                         document.getElementById('sync-status').className = 'sync-badge sync-online';
@@ -549,22 +566,36 @@
                 tabs.appendChild(btn);
             });
 
+            // 添加天数按钮
+            const addDayBtn = document.createElement('button');
+            addDayBtn.className = `px-4 py-2.5 ml-1 rounded-[1.25rem] text-sm font-bold text-slate-400 hover:bg-slate-100 border border-dashed border-slate-200 transition-all flex-shrink-0`;
+            addDayBtn.innerHTML = `<i class="fas fa-plus"></i>`;
+            addDayBtn.onclick = () => { window.addNewDay(); };
+            tabs.appendChild(addDayBtn);
+
             const day = tripData.days.find(d => d.id === tripData.currentDay);
             const isLastDay = day.id === tripData.days[tripData.days.length - 1].id;
             
             let dailyHotelText = day.hotelName || "点击设置当日住宿";
-            let hotelLinkHtml = day.hotelLink ? `<a href="${day.hotelLink}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-1.5 bg-blue-50 px-1.5 py-0.5 rounded flex items-center justify-center transition-colors shadow-sm" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : '';
+            let hotelLinkVal = day.hotelLink || "";
+            let hotelNoteVal = day.hotelNote || "";
+
+            let hotelLinkHtml = hotelLinkVal ? `<a href="${hotelLinkVal}" target="_blank" class="text-blue-500 hover:text-blue-700 ml-1.5 bg-blue-50 px-1.5 py-0.5 rounded flex items-center justify-center transition-colors shadow-sm" onclick="event.stopPropagation();"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : '';
+            let hotelNoteHtml = hotelNoteVal ? `<div class="w-full mt-2 pt-2 border-t border-slate-200/60 text-[10px] text-slate-400 font-normal whitespace-pre-wrap flex items-start"><i class="fas fa-info-circle mt-0.5 mr-1.5 opacity-50"></i><span>${hotelNoteVal}</span></div>` : '';
             
             let hotelSettingsBento = "";
             let hotelBadgeHtml = "";
 
             if (!isLastDay) {
                 hotelBadgeHtml = `
-                    <div onclick="setDayHotel()" class="inline-flex items-center bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs font-bold text-slate-500 max-w-full cursor-pointer hover:bg-slate-100 hover:border-slate-200 transition-all shadow-sm">
-                        <i class="fas fa-bed text-blue-500 mr-2 flex-shrink-0"></i> 
-                        <span class="flex-shrink-0 whitespace-nowrap">当晚住宿：</span>
-                        <span class="text-slate-700 ml-1 truncate min-w-0">${dailyHotelText}</span>
-                        ${hotelLinkHtml}
+                    <div onclick="setDayHotel()" class="inline-flex flex-col items-start bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold text-slate-500 max-w-full cursor-pointer hover:bg-slate-100 hover:border-slate-200 transition-all shadow-sm">
+                        <div class="flex items-center w-full">
+                            <i class="fas fa-bed text-blue-500 mr-2 flex-shrink-0"></i> 
+                            <span class="flex-shrink-0 whitespace-nowrap">当晚住宿：</span>
+                            <span class="text-slate-700 ml-1 truncate min-w-0">${dailyHotelText}</span>
+                            ${hotelLinkHtml}
+                        </div>
+                        ${hotelNoteHtml}
                     </div>
                 `;
 
@@ -595,8 +626,18 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm col-span-1 md:col-span-2 relative overflow-hidden">
                         <div class="absolute -right-4 -top-4 w-24 h-24 bg-slate-50 rounded-full opacity-50 pointer-events-none"></div>
-                        <span class="text-xs font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-lg">${day.date}</span>
-                        <h2 class="text-2xl md:text-3xl font-poppins font-black text-slate-800 mt-3 mb-3 break-words">${day.title}</h2>
+                        
+                        <div class="flex justify-between items-start mb-3 relative z-10">
+                            <div>
+                                <span class="text-xs font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-lg">${day.date}</span>
+                                <h2 class="text-2xl md:text-3xl font-poppins font-black text-slate-800 mt-3 break-words">${day.title}</h2>
+                            </div>
+                            <div class="flex gap-2 flex-shrink-0">
+                                <button onclick="window.editDayInfo()" class="w-8 h-8 bg-white border border-slate-200 text-slate-400 rounded-xl flex items-center justify-center hover:bg-blue-50 hover:border-blue-200 hover:text-blue-500 transition-all shadow-sm"><i class="fas fa-pen text-[10px]"></i></button>
+                                <button onclick="window.deleteCurrentDay()" class="w-8 h-8 bg-white border border-slate-200 text-slate-400 rounded-xl flex items-center justify-center hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition-all shadow-sm"><i class="fas fa-trash text-[10px]"></i></button>
+                            </div>
+                        </div>
+
                         ${hotelBadgeHtml}
                     </div>
 
@@ -684,15 +725,12 @@
             const main = document.getElementById('main-container');
             const members = window.getMembers();
             
-            // Setup dynamic stats dictionary
             let stats = {};
             members.forEach(m => stats[m] = { paid: 0, used: 0 });
             
-            // Calculate expenses dynamically
             tripData.expenses.forEach(e => {
                 let amt = e.currency === 'CNY' ? e.amount : (e.amount * (parseFloat(e.exchangeRate) || 0.048));
                 
-                // Case-insensitive mapping for backward compatibility
                 let payer = e.payer;
                 let matchedPayer = members.find(m => m.toLowerCase() === payer?.toLowerCase());
                 if (matchedPayer) payer = matchedPayer;
@@ -701,11 +739,9 @@
                 let matchedConsumer = members.find(m => m.toLowerCase() === consumer?.toLowerCase());
                 if (matchedConsumer) consumer = matchedConsumer;
 
-                // Track payer
                 if (!stats[payer]) stats[payer] = { paid: 0, used: 0 };
                 stats[payer].paid += amt;
 
-                // Track consumer
                 if (consumer === '共同' || consumer === 'Both' || consumer === 'together') {
                     let split = amt / members.length;
                     members.forEach(m => { stats[m].used += split; });
@@ -715,7 +751,6 @@
                 }
             });
 
-            // Build Settlement HTML
             let settlementHtml = '';
             members.forEach(m => {
                 let net = stats[m].paid - stats[m].used;
@@ -729,7 +764,6 @@
             });
             if (!settlementHtml) settlementHtml = '<span class="text-emerald-300 font-black">暂无记账</span>';
 
-            // Build dynamic member boxes
             let memberBoxesHtml = members.map(m => `
                 <div class="bg-white border border-slate-200 p-4 md:p-5 rounded-3xl shadow-sm flex flex-col col-span-1 justify-center">
                     <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1.5 truncate">${m}</p>
@@ -888,11 +922,13 @@
         window.openSettings = () => {
             openModal("设置", "管理您的私人数据库及行程信息", [
                 { id: 'tName', label: '行程名称', value: tripData?.tripName || '', placeholder: '例如：漫游计划 (留空则隐藏后缀)' },
+                { id: 'sDate', inputType: 'date', label: '起始日期 (修改将自动重排所有日程)', value: tripData?.settings?.startDate || '' },
                 { id: 'sid', label: '当前行程同步码 (ID)', value: tripId || '', placeholder: '例如: WEI-TRIP' },
                 { id: 'spin', label: '访问密码 (PIN)', value: tripPin || '', placeholder: '4位数字' },
                 { id: 'firebase', type: 'textarea', label: 'Firebase Config (JSON)', value: localStorage.getItem('firebase_custom_config_v2') || '', placeholder: '在此粘贴你的数据库 Config，清空则断开云端' }
             ], (v) => {
                 let reloadNeeded = false;
+                let dataChanged = false;
                 
                 if (v.firebase.trim() !== (localStorage.getItem('firebase_custom_config_v2') || '')) {
                     v.firebase.trim() === '' ? localStorage.removeItem('firebase_custom_config_v2') : localStorage.setItem('firebase_custom_config_v2', v.firebase);
@@ -907,10 +943,22 @@
                     reloadNeeded = true;
                 }
 
-                if (tripData && v.tName.trim() !== (tripData.tripName || '')) {
-                    tripData.tripName = v.tName.trim();
+                if (tripData) {
+                    if (v.tName.trim() !== (tripData.tripName || '')) {
+                        tripData.tripName = v.tName.trim();
+                        dataChanged = true;
+                    }
+                    if (v.sDate !== (tripData.settings?.startDate || '')) {
+                        if (!tripData.settings) tripData.settings = {};
+                        tripData.settings.startDate = v.sDate;
+                        window.recalculateAllDates();
+                        dataChanged = true;
+                    }
+                }
+
+                if (dataChanged) {
                     saveToCloud();
-                    if (!reloadNeeded) unlockApp(); // Update UI without reload if only name changed
+                    if (!reloadNeeded) { unlockApp(); render(); }
                 }
 
                 if (reloadNeeded) location.reload(); 
@@ -943,7 +991,10 @@
             tripData.days.forEach((day, index) => {
                 const isLastDayPdf = index === tripData.days.length - 1;
                 let dailyHotelText = day.hotelName || "未设置住宿";
-                let hotelBadgePdf = isLastDayPdf ? '' : `<span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">🏨 住宿: ${dailyHotelText}</span>`;
+                let hotelNoteVal = day.hotelNote || "";
+
+                let noteBadge = hotelNoteVal ? ` <span class="ml-2 font-normal text-slate-400">备注: ${hotelNoteVal.replace(/\n/g, ' ')}</span>` : '';
+                let hotelBadgePdf = isLastDayPdf ? '' : `<span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">🏨 住宿: ${dailyHotelText}${noteBadge}</span>`;
 
                 html += `<div class="mb-10 break-inside-avoid"><div class="bg-slate-50 p-4 rounded-2xl mb-6 flex items-end justify-between border-l-4 border-slate-600"><div><span class="text-xs font-black text-slate-500 uppercase tracking-widest">${day.date}</span><h2 class="text-2xl font-black text-slate-800 mt-1">Day ${day.id} - ${day.title}</h2></div>${hotelBadgePdf}</div><div class="space-y-4 pl-4 border-l-2 border-slate-200 ml-2">`;
                 if (day.events && day.events.length > 0) {
@@ -960,7 +1011,6 @@
             try { window.print(); } catch (err) { alert('当前环境拦截了系统打印功能'); }
         };
 
-        // Form Actions with Dynamic Members
         window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
         window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
         
@@ -1025,14 +1075,49 @@
         window.requestDeleteItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定删除此项？' }], () => { tripData.days.find(d => d.id === tripData.currentDay).events.splice(idx, 1); saveToCloud(); render(); }); };
         window.deleteExpense = (idx) => { openModal("删除账目", "", [{ id: 'i', type: 'info', label: '确认', value: '确定删除？' }], () => { tripData.expenses.splice(idx, 1); saveToCloud(); render(); }); };
         
+        window.addNewDay = () => {
+            const newId = tripData.days.length > 0 ? Math.max(...tripData.days.map(d => d.id)) + 1 : 1;
+            const dayIndex = tripData.days.length;
+            const newDateStr = window.formatDateFromStart(tripData?.settings?.startDate, dayIndex);
+            
+            tripData.days.push({ id: newId, date: newDateStr, title: `新增日程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
+            tripData.currentDay = newId;
+            saveToCloud(); render();
+        };
+
+        window.editDayInfo = () => {
+            const day = tripData.days.find(d => d.id === tripData.currentDay);
+            openModal("编辑日程信息", "自定义大标题", [
+                { id: 'title', label: '当日主题大标题', value: day.title }
+            ], (v) => {
+                day.title = v.title;
+                saveToCloud(); render();
+            });
+        };
+
+        window.deleteCurrentDay = () => {
+            if (tripData.days.length <= 1) {
+                openModal("无法删除", "", [{ id: 'i', label: '提示', type: 'info', value: '行程中至少需要保留一天！' }], () => {});
+                return;
+            }
+            openModal("删除此日", "此操作不可恢复", [{ id: 'i', label: '警告', type: 'info', value: '确定删除这一天的所有行程安排吗？' }], () => {
+                tripData.days = tripData.days.filter(d => d.id !== tripData.currentDay);
+                window.recalculateAllDates();
+                tripData.currentDay = tripData.days[0].id;
+                saveToCloud(); render();
+            });
+        };
+
         window.setDayHotel = () => { 
             const day = tripData.days.find(d => d.id === tripData.currentDay);
-            openModal("设置当日住宿", "可以在行程中快速记录酒店位置", [
+            openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
                 { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
-                { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' }
+                { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
+                { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
             ], (v) => { 
                 day.hotelName = v.t; 
                 day.hotelLink = v.l;
+                day.hotelNote = v.n;
                 saveToCloud(); render(); 
             });
         };
