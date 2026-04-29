@@ -139,7 +139,7 @@
 
         <main id="main-container" class="max-w-4xl mx-auto p-4 space-y-4 w-full"></main>
 
-        <!-- Modals -->
+        <!-- Custom Generic Modal -->
         <div id="custom-modal" class="fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm w-full h-full hidden">
             <div class="bg-white w-full max-w-md rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden modal-animate flex flex-col max-h-[85vh]">
                 <div class="p-6 flex-shrink-0 pb-2 border-b border-slate-50">
@@ -147,9 +147,10 @@
                     <p id="modal-subtitle" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></p>
                 </div>
                 <div id="modal-content" class="p-6 space-y-4 overflow-y-auto text-left flex-1 overscroll-touch"></div>
-                <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0">
-                    <button onclick="closeModal()" class="flex-1 py-3.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">取消</button>
-                    <button id="modal-confirm-btn" class="flex-1 py-3.5 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 shadow-sm transition-colors">确认保存</button>
+                
+                <!-- Updated dynamic footer to accommodate delete button easily -->
+                <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0 items-center justify-between" id="modal-footer">
+                    <!-- Buttons are dynamically inserted here -->
                 </div>
             </div>
         </div>
@@ -295,6 +296,7 @@
             const pinInput = document.getElementById('login-pin').value.trim();
             const errorEl = document.getElementById('login-error');
             if (!idInput) { errorEl.innerText = "请输入同步码"; return; }
+            
             if (isCloudConfigured && user) {
                 document.getElementById('login-btn').innerText = "检查中...";
                 startSync(idInput, pinInput);
@@ -698,9 +700,8 @@
                                     ${ev.review_rating ? `<div class="flex-1 min-w-0 pr-2 truncate"><span class="text-amber-400 text-[10px] tracking-widest mr-1 md:mr-2 flex-shrink-0">${'★'.repeat(ev.review_rating)}${'☆'.repeat(5-ev.review_rating)}</span> <span class="text-slate-600 font-medium truncate">${ev.review_text || '已打卡'}</span></div><button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors sm:opacity-0 group-hover/review:opacity-100 flex-shrink-0"><i class="fas fa-pen text-[10px]"></i></button>` : `<button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 font-bold text-[10px] transition-colors whitespace-nowrap"><i class="fas fa-star mr-1"></i> 游后点评</button>`}
                                 </div>
                             </div>
-                            <div class="flex flex-col gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                                <button onclick="editEvent(${idx})" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-blue-500 hover:border-blue-200 shadow-sm transition-all"><i class="fas fa-pen text-[10px]"></i></button>
-                                <button onclick="requestDeleteItem(${idx})" class="w-7 h-7 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-200 shadow-sm transition-all"><i class="fas fa-trash text-[10px]"></i></button>
+                            <div class="flex flex-col gap-2 flex-shrink-0 mt-1">
+                                <button onclick="editEvent(${idx})" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200 shadow-sm transition-all"><i class="fas fa-pen text-[10px]"></i></button>
                             </div>
                         </div>
                     `;
@@ -795,7 +796,7 @@
                     ${memberBoxesHtml}
                 </div>
                 
-                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">消费明细</h3>
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">消费明细 (点击卡片可编辑/删除)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="expense-list-container"></div>
             `;
             
@@ -812,9 +813,15 @@
                     const div = document.createElement('div');
                     
                     const isUnsettledJpy = e.currency === 'JPY' && (e.actualCnyAmount == null || e.actualCnyAmount === '');
+                    const isGrouped = !!e.groupId;
                     
-                    div.className = "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center group transition-all relative overflow-hidden hover:border-blue-300";
+                    div.className = isUnsettledJpy
+                        ? "bg-amber-50/30 p-4 md:p-5 rounded-3xl border border-amber-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden active:scale-[0.98] cursor-pointer"
+                        : "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden hover:border-blue-300 active:scale-[0.98] cursor-pointer";
                     
+                    // Allow clicking anywhere on the card to edit
+                    div.onclick = () => window.editExpense(idx);
+
                     const cnyVal = (e.amount * parseFloat(e.exchangeRate || 0.048)).toFixed(2);
                     const iconCls = getCatIcon(e.category || '其他/Other');
 
@@ -827,38 +834,38 @@
                         cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`;
                     }
 
+                    const groupBadge = isGrouped ? `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100"><i class="fas fa-link"></i> 小票单品</span>` : '';
+
                     div.innerHTML = `
                         <div class="flex items-center gap-4 min-w-0 pr-2">
-                            <div class="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 border border-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-50 group-hover:text-blue-500 group-hover:border-blue-100 transition-colors z-10"><i class="fas ${iconCls}"></i></div>
+                            <div class="w-12 h-12 rounded-2xl ${isUnsettledJpy ? 'bg-amber-100 text-amber-500' : 'bg-slate-50 text-slate-400'} flex items-center justify-center flex-shrink-0 transition-colors z-10"><i class="fas ${iconCls}"></i></div>
                             <div class="min-w-0 flex-1 z-10">
-                                <div class="flex items-center gap-2 mb-0.5">
+                                <div class="flex items-center gap-2 mb-1">
+                                    ${groupBadge}
                                     <p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>
                                     ${isUnsettledJpy ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
                                 </div>
                                 <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
-                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
                             </div>
                         </div>
-                        <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative z-10">
+                        <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative z-10 pl-2 border-l border-slate-100/50">
                             <p class="${e.currency === 'JPY' ? 'text-slate-600' : 'text-slate-800'} font-black text-sm whitespace-nowrap">${e.currency === 'JPY' ? '¥' : 'RMB'} ${e.amount}</p>
                             ${cnyDisplayHtml}
                         </div>
-                        
-                        <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white via-white/90 to-transparent flex items-center justify-end px-4 gap-1.5 translate-x-full opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all z-20 rounded-r-3xl">
-                            <button onclick="editExpense(${idx})" class="w-8 h-8 bg-white border border-slate-200 rounded-xl text-blue-500 hover:bg-blue-50 hover:border-blue-200 shadow-sm flex items-center justify-center transition-colors"><i class="fas fa-pen text-[10px]"></i></button>
-                            <button onclick="deleteExpense(${idx})" class="w-8 h-8 bg-white border border-slate-200 rounded-xl text-red-500 hover:bg-red-50 hover:border-red-200 shadow-sm flex items-center justify-center transition-colors"><i class="fas fa-trash text-[10px]"></i></button>
-                        </div>
+                        <i class="fas fa-chevron-right absolute right-3 top-1/2 -translate-y-1/2 text-slate-200 text-xs opacity-50"></i>
                     `;
                     listContainer.appendChild(div);
                 });
             }
         };
 
-        window.openModal = (title, subtitle, fields, onConfirm) => {
+        window.openModal = (title, subtitle, fields, onConfirm, onDelete = null) => {
             document.getElementById('modal-title').innerText = title;
             document.getElementById('modal-subtitle').innerText = subtitle;
             const content = document.getElementById('modal-content');
             content.innerHTML = '';
+            
             fields.forEach(f => {
                 const wrap = document.createElement('div');
                 wrap.id = `wrap-${f.id}`;
@@ -879,7 +886,7 @@
                         <div class="flex-1 min-w-0">
                             <label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm">
                                 <i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片或截图
-                                <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event, '${f.id}')">
+                                <input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')">
                             </label>
                             <input type="hidden" id="f-${f.id}" value="${f.value || ''}">
                         </div>
@@ -890,12 +897,27 @@
                 wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
                 content.appendChild(wrap);
             });
+
+            const footer = document.getElementById('modal-footer');
+            let extraBtnHtml = onDelete ? `<button id="modal-delete-btn" class="px-4 py-3.5 rounded-xl bg-red-50 text-red-500 text-sm font-bold hover:bg-red-100 transition-colors flex-shrink-0 shadow-sm"><i class="fas fa-trash"></i></button>` : '';
+            footer.innerHTML = `
+                ${extraBtnHtml}
+                <div class="flex flex-1 gap-3 justify-end">
+                    <button onclick="window.closeModal()" class="flex-1 py-3.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors shadow-sm">取消</button>
+                    <button id="modal-confirm-btn" class="flex-1 py-3.5 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 shadow-sm transition-colors">确认保存</button>
+                </div>
+            `;
+
+            if (onDelete) {
+                document.getElementById('modal-delete-btn').onclick = () => { onDelete(); window.closeModal(); };
+            }
             document.getElementById('modal-confirm-btn').onclick = () => {
                 const vals = {};
                 fields.forEach(f => { const el = document.getElementById(`f-${f.id}`); if(el) vals[f.id] = el.value; });
                 onConfirm(vals);
-                closeModal();
+                window.closeModal();
             };
+
             const m = document.getElementById('custom-modal');
             m.classList.remove('hidden');
             m.classList.add('active');
@@ -1184,12 +1206,21 @@
                 const currency = document.getElementById('receipt-global-currency').value;
                 const payer = tempReceiptData.payer;
                 const date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
+                const groupId = 'grp_' + Date.now();
                 
+                let totalJpy = 0;
+                tempReceiptData.items.forEach(item => {
+                    if (!item.item || !item.amount) return;
+                    totalJpy += parseFloat(item.amount);
+                });
+
                 let addedCount = 0;
                 tempReceiptData.items.forEach(item => {
                     if (!item.item || !item.amount) return;
                     tripData.expenses.push({
                         id: Date.now() + Math.random(),
+                        groupId: groupId,
+                        groupTotalJpy: totalJpy,
                         date: date,
                         item: item.item,
                         category: item.category || '其他/Other',
@@ -1295,7 +1326,7 @@
         };
         
         window.addExpense = () => { 
-            openModal("新增记账", "", [
+            window.openModal("新增记账", "", [
                 { id: 'item', label: '消费项目' }, 
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
                 { id: 'amount', label: '原币金额', inputType: 'number' }, 
@@ -1319,33 +1350,63 @@
                 }); 
                 saveToCloud(); render(); 
             }); 
-            // Trigger correct initial display
-            document.getElementById('wrap-actualCny').style.display = 'block'; // Since 'JPY' is default in the template
+            document.getElementById('wrap-actualCny').style.display = 'block'; 
         };
 
         window.editExpense = (idx) => {
             const ev = tripData.expenses[idx];
-            openModal("编辑账目", "", [
+            let isGroup = !!ev.groupId;
+            let groupItems = isGroup ? tripData.expenses.filter(e => e.groupId === ev.groupId) : [];
+            let groupTotalJpy = isGroup ? groupItems.reduce((sum, e) => sum + e.amount, 0) : ev.amount;
+            let groupTotalCny = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualCnyAmount || 0), 0) : (ev.actualCnyAmount || '');
+            if (groupTotalCny === 0) groupTotalCny = '';
+
+            let fields = [
                 { id: 'item', label: '消费项目', value: ev.item },
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
-                { id: 'amount', label: '原币金额', inputType: 'number', value: ev.amount },
+                { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
                 { id: 'currency', label: '币种', type: 'select', options: ['JPY', 'CNY'], value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value === 'JPY' ? 'block' : 'none')" },
-                { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后填写', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency === 'JPY' ? 'display:block' : 'display:none' },
+            ];
+
+            if (isGroup && ev.currency === 'JPY') {
+                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ¥${groupTotalJpy.toFixed(0)} JPY)。请在下方填写【整单实付RMB】，系统将按比例拆分。` });
+                fields.push({ id: 'actualCny', label: '整单实付扣款 (RMB)', inputType: 'number', value: groupTotalCny, style: 'display:block' });
+            } else {
+                fields.push({ id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency === 'JPY' ? 'display:block' : 'display:none' });
+            }
+
+            fields.push(
                 { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer },
                 { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
-            ], (v) => {
+            );
+
+            window.openModal("编辑账目", "", fields, (v) => {
                 if (!v.item || !v.amount) return;
                 ev.item = v.item;
                 ev.category = v.category;
                 ev.amount = parseFloat(v.amount);
                 ev.currency = v.currency;
-                if (v.currency === 'JPY' && v.actualCny) {
-                    ev.actualCnyAmount = parseFloat(v.actualCny);
-                } else {
-                    ev.actualCnyAmount = null;
-                }
                 ev.payer = v.payer;
                 ev.consumers = v.consumers;
+
+                if (v.currency === 'JPY' && v.actualCny) {
+                    let totalActualCny = parseFloat(v.actualCny);
+                    if (isGroup) {
+                        groupItems.forEach(item => {
+                            item.actualCnyAmount = (item.amount / groupTotalJpy) * totalActualCny;
+                        });
+                    } else {
+                        ev.actualCnyAmount = totalActualCny;
+                    }
+                } else {
+                    ev.actualCnyAmount = null;
+                    if (isGroup && v.currency === 'JPY') {
+                        groupItems.forEach(item => item.actualCnyAmount = null);
+                    }
+                }
+                saveToCloud(); render();
+            }, () => {
+                tripData.expenses.splice(idx, 1);
                 saveToCloud(); render();
             });
         };
@@ -1366,7 +1427,6 @@
         };
 
         window.requestDeleteItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定删除此项？' }], () => { tripData.days.find(d => d.id === tripData.currentDay).events.splice(idx, 1); saveToCloud(); render(); }); };
-        window.deleteExpense = (idx) => { openModal("删除账目", "", [{ id: 'i', type: 'info', label: '确认', value: '确定删除？' }], () => { tripData.expenses.splice(idx, 1); saveToCloud(); render(); }); };
         
         window.addNewDay = () => {
             const newId = tripData.days.length > 0 ? Math.max(...tripData.days.map(d => d.id)) + 1 : 1;
@@ -1403,16 +1463,32 @@
 
         window.setDayHotel = () => { 
             const day = tripData.days.find(d => d.id === tripData.currentDay);
-            openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
-                { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
-                { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
-                { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
-            ], (v) => { 
-                day.hotelName = v.t; 
-                day.hotelLink = v.l;
-                day.hotelNote = v.n;
-                saveToCloud(); render(); 
-            });
+            
+            if (!tripData.isGeneric && day.id >= 3 && day.id <= 5) {
+                openModal("设置大井町酒店", "修改将同步至 Day 3 - Day 5", [
+                    { id: 't', label: '酒店名称', value: tripData.oimachiHotel?.title || '', placeholder: '例如：大井町 APA Hotel' },
+                    { id: 'l', label: '地图链接 (可选)', value: tripData.oimachiHotel?.link || '', placeholder: 'Google Maps 链接' },
+                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: tripData.oimachiHotel?.note || '', placeholder: '入住密码、确认单号等...' }
+                ], (v) => { 
+                    if (!tripData.oimachiHotel) tripData.oimachiHotel = {};
+                    tripData.oimachiHotel.title = v.t || "未设置"; 
+                    tripData.oimachiHotel.link = v.l;
+                    tripData.oimachiHotel.note = v.n;
+                    tripData.oimachiHotel.isSet = !!v.t;
+                    saveToCloud(); render(); 
+                });
+            } else {
+                openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
+                    { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
+                    { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
+                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
+                ], (v) => { 
+                    day.hotelName = v.t; 
+                    day.hotelLink = v.l;
+                    day.hotelNote = v.n;
+                    saveToCloud(); render(); 
+                });
+            }
         };
 
         window.addShoppingItem = () => {
@@ -1438,11 +1514,12 @@
                 { id: 'price', label: '参考价', value: item.price },
                 { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
                 { id: 'note', label: '备注', value: item.note }
-            ], (v) => { Object.assign(item, v); saveToCloud(); render(); });
+            ], (v) => { Object.assign(item, v); saveToCloud(); render(); }, () => {
+                tripData.shoppingList.splice(idx, 1); saveToCloud(); render();
+            });
         };
 
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; saveToCloud(); render(); };
-        window.deleteShoppingItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定移除此商品吗？' }], () => { tripData.shoppingList.splice(idx, 1); saveToCloud(); render(); }); };
 
         const checkAuthAndProceed = () => {
             onAuthStateChanged(auth, async (u) => {
