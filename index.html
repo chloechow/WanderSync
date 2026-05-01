@@ -148,13 +148,12 @@
                 </div>
                 <div id="modal-content" class="p-6 space-y-4 overflow-y-auto text-left flex-1 overscroll-touch"></div>
                 
-                <!-- Updated dynamic footer to accommodate delete button easily -->
                 <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0 items-center justify-between" id="modal-footer">
-                    <!-- Buttons are dynamically inserted here -->
                 </div>
             </div>
         </div>
 
+        <!-- Receipt AI Modal -->
         <div id="receipt-modal" class="fixed inset-0 z-[150] items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm w-full h-full hidden">
             <div class="bg-white w-full max-w-md rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden modal-animate flex flex-col max-h-[90vh]">
                 <div class="p-6 flex-shrink-0 pb-3 border-b border-slate-50 flex justify-between items-center">
@@ -819,7 +818,6 @@
                         ? "bg-amber-50/30 p-4 md:p-5 rounded-3xl border border-amber-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden active:scale-[0.98] cursor-pointer"
                         : "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden hover:border-blue-300 active:scale-[0.98] cursor-pointer";
                     
-                    // Allow clicking anywhere on the card to edit
                     div.onclick = () => window.editExpense(idx);
 
                     const cnyVal = (e.amount * parseFloat(e.exchangeRate || 0.048)).toFixed(2);
@@ -834,7 +832,8 @@
                         cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`;
                     }
 
-                    const groupBadge = isGrouped ? `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100"><i class="fas fa-link"></i> 小票单品</span>` : '';
+                    const groupBadge = isGrouped ? `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100 flex-shrink-0"><i class="fas fa-receipt"></i> ${e.receiptLabel || '小票合单'}</span>` : '';
+                    const itemNote = e.note ? `<div class="text-[10px] text-slate-500 mt-2 bg-slate-50 p-1.5 rounded-lg inline-block border border-slate-100 leading-tight w-fit"><i class="fas fa-quote-left opacity-40 mr-1 text-[8px]"></i>${e.note}</div>` : '';
 
                     div.innerHTML = `
                         <div class="flex items-center gap-4 min-w-0 pr-2">
@@ -846,7 +845,8 @@
                                     ${isUnsettledJpy ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
                                 </div>
                                 <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
-                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                ${itemNote}
                             </div>
                         </div>
                         <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative z-10 pl-2 border-l border-slate-100/50">
@@ -1117,7 +1117,7 @@
                 const result = JSON.parse(text);
                 
                 tempReceiptData.items = result.items || [];
-                tempReceiptData.items.forEach(i => { i.consumer = '共同'; });
+                tempReceiptData.items.forEach(i => { i.consumer = '共同'; i.note = ''; });
                 tempReceiptData.payer = window.getMembers()[0];
                 tempReceiptData.date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
 
@@ -1146,7 +1146,7 @@
                     <i class="fas fa-info-circle mt-0.5"></i> 
                     <span>AI 已尝试自动分摊税费与折扣。如有偏差，请直接在下方输入框中点击校对修改。</span>
                 </div>
-                <div class="bg-white p-4 rounded-2xl mb-4 border border-slate-200 shadow-sm">
+                <div class="bg-white p-4 rounded-2xl mb-4 border border-slate-200 shadow-sm space-y-3">
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">全单支付人</label>
@@ -1162,6 +1162,10 @@
                             </select>
                         </div>
                     </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">小票整单标签 (如: 松本清药妆)</label>
+                        <input type="text" id="receipt-global-label" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" placeholder="可选填整单标签...">
+                    </div>
                 </div>
                 <div class="space-y-3 pb-2" id="receipt-items-container">
             `;
@@ -1175,14 +1179,14 @@
                         <div class="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm relative group transition-all hover:border-blue-300">
                             <button onclick="window.removeReceiptItem(${idx})" class="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-lg text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:text-red-500 shadow-sm flex items-center justify-center z-10"><i class="fas fa-times"></i></button>
                             <div class="flex gap-2 mb-2.5">
-                                <input type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}" onchange="tempReceiptData.items[${idx}].item = this.value">
+                                <input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}">
                                 <div class="relative w-28 flex-shrink-0">
                                     <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">¥</span>
-                                    <input type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}" onchange="tempReceiptData.items[${idx}].amount = parseFloat(this.value)">
+                                    <input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}">
                                 </div>
                             </div>
-                            <div class="flex gap-2">
-                                <select class="flex-1 p-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-500 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all" onchange="tempReceiptData.items[${idx}].category = this.value">
+                            <div class="flex gap-2 mb-2">
+                                <select id="ri-cat-${idx}" class="flex-1 p-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-500 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all">
                                     <option value="餐饮/Food" ${item.category.includes('餐饮')?'selected':''}>🍔 餐饮/Food</option>
                                     <option value="购物/Shopping" ${item.category.includes('购物')?'selected':''}>🛍️ 购物/Shopping</option>
                                     <option value="交通/Transport" ${item.category.includes('交通')?'selected':''}>🚆 交通/Transport</option>
@@ -1190,9 +1194,12 @@
                                     <option value="娱乐/Entertainment" ${item.category.includes('娱乐')?'selected':''}>🎟️ 娱乐/Ent.</option>
                                     <option value="其他/Other" ${item.category.includes('其他')?'selected':''}>📦 其他/Other</option>
                                 </select>
-                                <select class="flex-1 p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" onchange="tempReceiptData.items[${idx}].consumer = this.value">
+                                <select id="ri-con-${idx}" class="flex-1 p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
                                     ${consumerOptions}
                                 </select>
+                            </div>
+                            <div>
+                                <input id="ri-note-${idx}" type="text" class="w-full p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="单品附加备注 (选填)..." value="${item.note || ''}">
                             </div>
                         </div>
                     `;
@@ -1204,9 +1211,24 @@
 
             document.getElementById('receipt-modal-confirm-btn').onclick = () => {
                 const currency = document.getElementById('receipt-global-currency').value;
+                const receiptLabel = document.getElementById('receipt-global-label').value.trim();
                 const payer = tempReceiptData.payer;
                 const date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
                 const groupId = 'grp_' + Date.now();
+                
+                // --- 强制从 DOM 同步最新数据 ---
+                tempReceiptData.items.forEach((item, idx) => {
+                    const nameEl = document.getElementById(`ri-name-${idx}`);
+                    const amtEl = document.getElementById(`ri-amt-${idx}`);
+                    const catEl = document.getElementById(`ri-cat-${idx}`);
+                    const conEl = document.getElementById(`ri-con-${idx}`);
+                    const noteEl = document.getElementById(`ri-note-${idx}`);
+                    if (nameEl) item.item = nameEl.value;
+                    if (amtEl) item.amount = parseFloat(amtEl.value) || 0;
+                    if (catEl) item.category = catEl.value;
+                    if (conEl) item.consumer = conEl.value;
+                    if (noteEl) item.note = noteEl.value;
+                });
                 
                 let totalJpy = 0;
                 tempReceiptData.items.forEach(item => {
@@ -1221,6 +1243,7 @@
                         id: Date.now() + Math.random(),
                         groupId: groupId,
                         groupTotalJpy: totalJpy,
+                        receiptLabel: receiptLabel,
                         date: date,
                         item: item.item,
                         category: item.category || '其他/Other',
@@ -1229,7 +1252,8 @@
                         actualCnyAmount: null,
                         exchangeRate: currency === 'JPY' ? "0.048" : "1.0",
                         payer: payer,
-                        consumers: item.consumer || '共同'
+                        consumers: item.consumer || '共同',
+                        note: item.note || ''
                     });
                     addedCount++;
                 });
@@ -1250,10 +1274,10 @@
 
         window.exportCSV = () => {
             if (!tripData.expenses || tripData.expenses.length === 0) return;
-            let csvContent = "\uFEFF日期,消费项目,分类,金额,币种,汇率,实付人民币(CNY),支付人,使用人\n";
+            let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),支付人,使用人,小票标签,备注说明\n";
             tripData.expenses.forEach(e => {
                 let amountInCNY = e.currency === 'CNY' ? e.amount : (e.actualCnyAmount != null && e.actualCnyAmount !== '' ? e.actualCnyAmount : (e.amount * parseFloat(e.exchangeRate || 0.048)).toFixed(2));
-                let row = `"${e.date}","${e.item?e.item.replace(/"/g, '""'):''}","${e.category||'其他'}","${e.amount}","${e.currency}","${e.exchangeRate||'1.0'}","${amountInCNY}","${e.payer}","${e.consumers}"`;
+                let row = `"${e.date}","${e.item?e.item.replace(/"/g, '""'):''}","${e.category||'其他'}","${e.amount}","${e.currency}","${e.exchangeRate||'1.0'}","${amountInCNY}","${e.payer}","${e.consumers}","${e.receiptLabel||''}","${e.note?e.note.replace(/"/g, '""'):''}"`;
                 csvContent += row + "\n";
             });
             const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
@@ -1333,7 +1357,8 @@
                 { id: 'currency', label: '币种', type: 'select', options: ['JPY', 'CNY'], onchange: "document.getElementById('wrap-actualCny').style.display = (this.value === 'JPY' ? 'block' : 'none')" }, 
                 { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', style: 'display:none' },
                 { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] }
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
+                { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
             ], (v) => { 
                 if (!v.item || !v.amount) return; 
                 tripData.expenses.push({ 
@@ -1346,7 +1371,8 @@
                     actualCnyAmount: (v.currency === 'JPY' && v.actualCny) ? parseFloat(v.actualCny) : null,
                     exchangeRate: "0.048", 
                     payer: v.payer, 
-                    consumers: v.consumers 
+                    consumers: v.consumers,
+                    note: v.note || ''
                 }); 
                 saveToCloud(); render(); 
             }); 
@@ -1380,6 +1406,11 @@
                 { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
             );
 
+            if (isGroup) {
+                fields.push({ id: 'receiptLabel', label: '所属小票标签 (修改将同步至整单)', value: ev.receiptLabel || '', placeholder: '例如：松本清药妆' });
+            }
+            fields.push({ id: 'note', label: '单项备注说明 (可选)', value: ev.note || '', placeholder: '例如：帮别人代购...' });
+
             window.openModal("编辑账目", "", fields, (v) => {
                 if (!v.item || !v.amount) return;
                 ev.item = v.item;
@@ -1388,6 +1419,11 @@
                 ev.currency = v.currency;
                 ev.payer = v.payer;
                 ev.consumers = v.consumers;
+                ev.note = v.note || '';
+
+                if (isGroup && v.receiptLabel !== undefined) {
+                    groupItems.forEach(item => item.receiptLabel = v.receiptLabel);
+                }
 
                 if (v.currency === 'JPY' && v.actualCny) {
                     let totalActualCny = parseFloat(v.actualCny);
