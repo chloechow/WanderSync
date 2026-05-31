@@ -45,8 +45,8 @@
         @keyframes scaleUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
         .sync-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; transition: all 0.3s; white-space: nowrap; font-weight: bold; }
-        .sync-online { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-        .sync-offline { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+        .sync-online { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .sync-offline { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
         @media print { body { background-color: #fff !important; } }
     </style>
 </head>
@@ -65,7 +65,7 @@
             <textarea id="config-input" rows="7" placeholder='在此粘贴你的 Firebase Config JSON' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
             <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
             <div class="flex flex-col gap-2">
-                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">验证数据库</button>
+                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors shadow-md">验证数据库</button>
             </div>
         </div>
     </div>
@@ -84,7 +84,7 @@
             <input id="login-id" type="text" placeholder="同步码 (ID)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase text-center font-bold tracking-widest text-slate-800 transition-all">
             <input id="login-pin" type="password" placeholder="访问密码 (PIN)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-[0.5em] text-slate-800 transition-all">
             <p id="login-error" class="text-red-500 text-xs font-bold mb-4 h-4"></p>
-            <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider">验证并进入</button>
+            <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider shadow-md">验证并进入</button>
         </div>
     </div>
 
@@ -154,7 +154,7 @@
                 </button>
                 <div class="flex gap-2 w-full">
                     <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
-                    <button onclick="confirmInitWorkspace(false)" class="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors text-sm">手动建立空行程</button>
+                    <button onclick="confirmInitWorkspace(false)" class="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors text-sm shadow-md">手动建立空行程</button>
                 </div>
             </div>
         </div>
@@ -181,7 +181,7 @@
                         <div class="min-w-0 flex-1 pr-2">
                             <h1 id="main-header-title" class="text-base md:text-lg font-poppins font-black tracking-tight text-slate-800 truncate leading-tight">Wander<span class="text-blue-500">Sync</span></h1>
                             <div class="flex items-center gap-2 mt-0.5">
-                                <span id="sync-status" class="sync-badge sync-offline">本地离线</span>
+                                <span id="sync-status" class="sync-badge sync-offline">离线模式</span>
                                 <span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span>
                             </div>
                         </div>
@@ -258,6 +258,8 @@
 
         let app, auth, db;
         let isCloudConfigured = false;
+        let isBYOD = false; 
+        
         let tripId = localStorage.getItem('trip_sync_id') || null;
         let tripPin = localStorage.getItem('trip_sync_pin') || "";
         let pendingNewId = null;
@@ -266,6 +268,8 @@
         let user = null;
         let tripData = null;
         let syncUnsubscribe = null; 
+
+        const getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // --- Core Base Wrappers ---
         window.showAILoading = (title, desc) => {
@@ -360,11 +364,17 @@
             return `<span class="text-[10px] ${st} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`;
         };
 
-        // --- Strictly Custom Firebase Initialization ---
+        // --- Firebase Initializers ---
         const initFirebase = (configStr) => {
             try {
                 let config;
-                try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
+                if (configStr) {
+                    try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
+                    isBYOD = true;
+                } else {
+                    throw new Error("No config available");
+                }
+                
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
                 app = initializeApp(config, "App_" + Date.now()); 
                 auth = getAuth(app);
@@ -533,14 +543,29 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             return result.days;
         };
 
+        const loadLocalFallback = () => {
+            const cached = JSON.parse(localStorage.getItem('trip_local_finance_v8'));
+            if (cached) {
+                if (cached.pin && cached.pin !== tripPin) { showLoginError("访问密码错误 (本地)"); return; }
+                tripData = cached;
+            } else {
+                showLoginError("本地没有找到该缓存，且云端未连接");
+                return;
+            }
+            document.getElementById('sync-status').innerText = '连接失败(本地模式)';
+            document.getElementById('sync-status').className = 'sync-badge sync-offline';
+            unlockApp();
+        };
+
         const startSync = (testId, testPin) => {
             if (!isCloudConfigured || !user) { showLoginError("环境未就绪"); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
-            // 绝对路径锁定：回归到你的个人服务器的根集合 travel_plans
-            const tripRef = doc(db, 'travel_plans', reqId);
+            
+            // 恢复绝对标准的沙盒读写路径以兼容 Security Rules
+            const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
                 if (snap.exists()) {
@@ -571,7 +596,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             if (dynamicMembers.length === 0) dynamicMembers = ['成员 A', '成员 B'];
                             
                             const existingKey = cloudData.settings?.geminiApiKey || "";
-                            cloudData.settings = { members: dynamicMembers, startDate: "", geminiApiKey: existingKey, destination: "日本", currency: "JPY" };
+                            cloudData.settings = { members: dynamicMembers, startDate: "", geminiApiKey: existingKey, destination: "海外", currency: "KRW" };
 
                             if (cloudData.oimachiHotel && cloudData.oimachiHotel.isSet) {
                                 (cloudData.days || []).forEach(d => {
@@ -604,22 +629,30 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 }
             }, (error) => {
                 console.error("同步失败:", error);
+                document.getElementById('sync-status').innerText = '权限拒绝(离线)';
+                document.getElementById('sync-status').className = 'sync-badge sync-offline';
+                
                 if (error.code === 'permission-denied' || error.message.includes('Missing')) {
-                    showLoginError("数据库被拒：请确保你的 Firebase 已在控制台允许匿名登录，并放行了安全规则。");
+                    showLoginError("数据库权限被拒：您的 Firebase Security Rules 拦截了读取请求。请检查控制台规则配置。");
                 } else {
                     showLoginError("网络异常或配置错误");
                 }
+                loadLocalFallback();
             });
         };
 
         const saveToCloud = async () => {
-            if (!isCloudConfigured || !user || !tripId || !tripData) return;
+            if (!isCloudConfigured || !user || !tripId || !tripData) {
+                localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+                return;
+            }
             try { 
-                const tripRef = doc(db, 'travel_plans', tripId);
+                const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', tripId);
                 await setDoc(tripRef, tripData); 
             } catch (err) {
                 console.error("Save Error:", err);
             }
+            localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
         };
 
         window.logoutTrip = () => {
@@ -988,9 +1021,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                                 ${ev.type === 'meal_options' ? `
                                     <h4 class="font-bold text-slate-800 mb-3 break-words text-sm md:text-base">${ev.title}</h4>
                                     <div class="space-y-2 md:space-y-3">${ev.options.map(opt => `
-                                        <div class="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100 shadow-sm w-full">
+                                        <div class="bg-slate-50 p-3 md:p-4 rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm w-full">
                                             <div class="flex justify-between items-start md:items-center mb-1 gap-2">
-                                                <a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-blue-500 leading-tight">${opt.title} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a>
+                                                <a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-indigo-600 leading-tight">${opt.title} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a>
                                                 <span class="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-md font-bold whitespace-nowrap flex-shrink-0 mt-0.5 md:mt-0">⭐ ${opt.rating || '4.5'}</span>
                                             </div>
                                             <div class="text-[10px] text-slate-500 font-medium break-words leading-relaxed mt-1">人均: ${opt.price} | 必点: ${opt.dishes}</div>
@@ -998,7 +1031,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                                     `).join('')}</div>
                                 ` : `
                                     <div class="pr-2 md:pr-6">
-                                        <a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-blue-500 transition-colors">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a>
+                                        <a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-indigo-600">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a>
                                         <p class="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2 leading-relaxed font-medium break-words">${ev.desc || ''}</p>
                                     </div>
                                 `}
@@ -1700,8 +1733,19 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
         window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
         
-        const checkAuthAndProceed = () => {
-            onAuthStateChanged(auth, async (u) => {
+        // 🚨 启动逻辑核心重构 🚨
+        const checkAuthAndProceed = async () => {
+            try {
+                // BYOD 专属：丢弃宿主 token，纯净启动匿名登录
+                await signInAnonymously(auth);
+            } catch (e) {
+                console.error("匿名登录失败:", e);
+                document.getElementById('config-error').innerText = "认证被拒：请前往 Firebase 控制台 Authentication 开启【Anonymous 匿名登录】。";
+                loadLocalFallback();
+                return;
+            }
+
+            onAuthStateChanged(auth, (u) => {
                 user = u;
                 if (u) {
                     if (tripId) { 
@@ -1710,13 +1754,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         document.getElementById('login-screen').classList.remove('hidden'); 
                     }
                 }
-            });
-
-            // 强制绕开宿主平台自定义 Token，使用纯净匿名登录
-            signInAnonymously(auth).catch((e) => {
-                console.error("Auth Error:", e);
-                document.getElementById('config-error').innerText = "数据库连接失败：请确保你的 Firebase 已开启匿名登录 (Anonymous Auth)。";
-                document.getElementById('config-screen').classList.remove('hidden');
             });
         };
 
