@@ -62,7 +62,7 @@
                 <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">连接云端</h2>
                 <p class="text-xs text-slate-500 font-medium mt-1">初始化私人数据库连接</p>
             </div>
-            <textarea id="config-input" rows="7" placeholder='{\n  "apiKey": "AIzaSy...",\n  "projectId": "...",\n  ...\n}' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
+            <textarea id="config-input" rows="7" placeholder='在此粘贴 Firebase Config JSON (可留空使用内置默认云环境)' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
             <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
             <div class="flex flex-col gap-2">
                 <button onclick="saveFirebaseConfig()" class="w-full bg-slate-600 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">连接数据库</button>
@@ -186,10 +186,15 @@
                                 <span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span>
                             </div>
                         </div>
-                    </div>
-                    <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all flex-shrink-0">
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <button onclick="window.logoutTrip()" class="bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="退出/新建行程">
+                                <i class="fas fa-sign-out-alt"></i>
+                            </button>
+                            <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="全局设置">
                         <i class="fas fa-sliders-h"></i>
                     </button>
+                        </div>
+                    </div>
                 </header>
                 <nav id="itinerary-nav" class="mt-3">
                     <div class="flex gap-2 overflow-x-auto hide-scrollbar pb-1" id="tabs-container"></div>
@@ -249,7 +254,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         let app, auth, db;
@@ -262,6 +267,9 @@
         let user = null;
         let tripData = null;
         let syncUnsubscribe = null; 
+
+        // Safe fetch of system App ID
+        const getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // --- Core Base Wrappers ---
         window.showAILoading = (title, desc) => {
@@ -276,7 +284,6 @@
             document.getElementById('ai-global-loading').classList.remove('flex');
         };
 
-        // Universal robust Gemini call with exponential backoff
         window.askGemini = async (payload, apiKey, isJson = true) => {
             if (isJson && !payload.generationConfig) {
                 payload.generationConfig = { responseMimeType: "application/json" };
@@ -361,20 +368,33 @@
         const initFirebase = (configStr) => {
             try {
                 let config;
+                if (!configStr && typeof __firebase_config !== 'undefined') {
+                    config = JSON.parse(__firebase_config);
+                } else {
                 try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
-                if (!config.apiKey || !config.projectId) throw new Error("Invalid Config format");
-                app = initializeApp(config);
+                }
+                if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
+                app = initializeApp(config, "App_" + Date.now()); // Prevent double instantiation
                 auth = getAuth(app);
                 db = getFirestore(app);
                 isCloudConfigured = true;
                 return true;
-            } catch (err) { return false; }
+            } catch (err) { 
+                console.error("Firebase init failed:", err);
+                return false; 
+            }
         };
 
         window.saveFirebaseConfig = () => {
             const val = document.getElementById('config-input').value.trim();
             const errEl = document.getElementById('config-error');
-            if(!val) { errEl.innerText = "配置不可为空"; return; }
+            
+            // Auto bypass if blank and internal system exists
+            if (!val && typeof __firebase_config === 'undefined') { 
+                errEl.innerText = "配置不可为空"; 
+                return; 
+            }
+            
             if (initFirebase(val)) {
                 localStorage.setItem('firebase_custom_config_v2', val);
                 document.getElementById('config-screen').classList.add('hidden');
@@ -385,7 +405,7 @@
                 }
                 document.getElementById('login-screen').classList.add('active');
                 checkAuthAndProceed();
-            } else { errEl.innerText = "配置格式错误，请检查是否包含 apiKey"; }
+            } else { errEl.innerText = "配置格式错误，请检查是否包含 apiKey (或留空使用默认)"; }
         };
 
         window.skipConfig = () => {
@@ -546,12 +566,12 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         };
 
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured) { loadLocalFallback(); return; }
+            if (!isCloudConfigured || !user) { loadLocalFallback(); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
-            const tripRef = doc(db, 'travel_plans', reqId);
+            const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
                 if (snap.exists()) {
@@ -580,7 +600,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             
                             let dynamicMembers = Array.from(membersSet).filter(m => m !== '共同' && m !== 'Together');
                             if (dynamicMembers.length === 0) dynamicMembers = ['成员 A', '成员 B'];
-                            cloudData.settings = { members: dynamicMembers, startDate: "", geminiApiKey: "", destination: "日本", currency: "JPY" };
+                            
+                            const existingKey = cloudData.settings?.geminiApiKey || "";
+                            cloudData.settings = { members: dynamicMembers, startDate: "", geminiApiKey: existingKey, destination: "日本", currency: "JPY" };
 
                             if (cloudData.oimachiHotel && cloudData.oimachiHotel.isSet) {
                                 (cloudData.days || []).forEach(d => {
@@ -622,7 +644,12 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
                 return;
             }
-            try { await setDoc(doc(db, 'travel_plans', tripId), tripData); } catch (err) {}
+            try { 
+                const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', tripId);
+                await setDoc(tripRef, tripData); 
+            } catch (err) {
+                console.error("Save Error:", err);
+            }
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
         };
 
@@ -938,7 +965,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 mt-2 col-span-1 md:col-span-2">
-                        <button onclick="window.openMagicEvent()" class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-2 group">
+                        <button onclick="window.openMagicEvent()" class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 hover:from-blue-100 hover:to-indigo-100 transition-all flex flex-col items-center justify-center gap-2 group">
                             <i class="fas fa-magic text-blue-500 text-lg"></i>
                             <span class="text-[10px] md:text-xs font-bold text-blue-600">✨ 一句话加行程</span>
                     </button>
@@ -1307,6 +1334,16 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
+        };
+
+        window.logoutTrip = () => {
+            openModal("退出当前行程", "切换行程或创建新行程", [
+                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存。退出后，您可以在首页输入新的同步码来创建新行程，或输入其他同步码进入已有行程。' }
+            ], () => {
+                localStorage.removeItem('trip_sync_id');
+                localStorage.removeItem('trip_sync_pin');
+                location.reload();
+            });
         };
 
         window.openSettings = () => {
@@ -1848,8 +1885,23 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
 
         window.setDayHotel = () => { 
             const day = tripData.days.find(d => d.id === tripData.currentDay);
+            
+            if (!tripData.isGeneric && day.id >= 3 && day.id <= 5) {
+                openModal("设置大井町酒店", "修改将同步至 Day 3 - Day 5", [
+                    { id: 't', label: '酒店名称', value: tripData.oimachiHotel?.title || '', placeholder: '例如：大井町 APA Hotel' },
+                    { id: 'l', label: '地图链接 (可选)', value: tripData.oimachiHotel?.link || '', placeholder: 'Google Maps 链接' },
+                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: tripData.oimachiHotel?.note || '', placeholder: '入住密码、确认单号等...' }
+                ], (v) => { 
+                    if (!tripData.oimachiHotel) tripData.oimachiHotel = {};
+                    tripData.oimachiHotel.title = v.t || "未设置"; 
+                    tripData.oimachiHotel.link = v.l;
+                    tripData.oimachiHotel.note = v.n;
+                    tripData.oimachiHotel.isSet = !!v.t;
+                    saveToCloud(); render(); 
+                });
+            } else {
                 openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
-                { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：新罗酒店' },
+                    { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
                     { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
                     { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
                 ], (v) => { 
@@ -1858,6 +1910,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     day.hotelNote = v.n;
                     saveToCloud(); render(); 
                 });
+            }
         };
 
         window.addShoppingItem = () => {
@@ -1891,23 +1944,39 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; saveToCloud(); render(); };
 
         const checkAuthAndProceed = () => {
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) {
+                    console.error("Auth Error:", e);
+                    loadLocalFallback();
+                }
+            };
+
             onAuthStateChanged(auth, async (u) => {
                 user = u;
+                if (u) {
                 if (tripId) { 
                     startSync(tripId); 
                 } else { 
                     document.getElementById('login-screen').classList.remove('hidden'); 
                 }
+                }
             });
-            (async () => {
-                try { await signInAnonymously(auth); } 
-                catch (e) { console.error("Auth Error:", e); loadLocalFallback(); }
-            })();
+
+            initAuth();
         };
 
         const savedConfig = localStorage.getItem('firebase_custom_config_v2');
-        if (savedConfig) {
+        if (savedConfig !== null) {
             if (initFirebase(savedConfig)) { checkAuthAndProceed(); } 
+            else { document.getElementById('config-screen').classList.remove('hidden'); }
+        } else if (typeof __firebase_config !== 'undefined') {
+            if (initFirebase('')) { checkAuthAndProceed(); }
             else { document.getElementById('config-screen').classList.remove('hidden'); }
         } else { 
             document.getElementById('config-screen').classList.remove('hidden'); 
