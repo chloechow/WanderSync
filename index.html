@@ -57,16 +57,15 @@
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-database text-2xl text-slate-600"></i>
+                    <i class="fas fa-lock text-2xl text-slate-600"></i>
                 </div>
-                <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">连接云端</h2>
-                <p class="text-xs text-slate-500 font-medium mt-1">初始化私人数据库连接</p>
+                <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">私有化部署</h2>
+                <p class="text-xs text-slate-500 font-medium mt-1">系统已强制开启云端校验</p>
             </div>
-            <textarea id="config-input" rows="7" placeholder='在此粘贴 Firebase Config JSON (可留空使用内置默认云环境)' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
+            <textarea id="config-input" rows="7" placeholder='在此粘贴你的 Firebase Config JSON' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
             <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
             <div class="flex flex-col gap-2">
-                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-600 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">连接数据库</button>
-                <button onclick="skipConfig()" class="w-full bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">跳过，仅使用本地离线模式</button>
+                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">验证数据库</button>
             </div>
         </div>
     </div>
@@ -102,7 +101,7 @@
                     <div class="col-span-2">
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label>
                         <input id="init-trip-name" type="text" placeholder="例如：首尔暴走 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
+                    </div>
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">目的地</label>
                         <input id="init-dest" type="text" placeholder="例: 韩国首尔" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
@@ -154,7 +153,7 @@
                     <i class="fas fa-magic mr-2"></i> 让 AI 帮我排满行程
                 </button>
                 <div class="flex gap-2 w-full">
-                <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
+                    <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
                     <button onclick="confirmInitWorkspace(false)" class="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors text-sm">手动建立空行程</button>
                 </div>
             </div>
@@ -191,8 +190,8 @@
                                 <i class="fas fa-sign-out-alt"></i>
                             </button>
                             <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="全局设置">
-                        <i class="fas fa-sliders-h"></i>
-                    </button>
+                                <i class="fas fa-sliders-h"></i>
+                            </button>
                         </div>
                     </div>
                 </header>
@@ -254,7 +253,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         let app, auth, db;
@@ -267,9 +266,6 @@
         let user = null;
         let tripData = null;
         let syncUnsubscribe = null; 
-
-        // Safe fetch of system App ID
-        const getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // --- Core Base Wrappers ---
         window.showAILoading = (title, desc) => {
@@ -364,17 +360,13 @@
             return `<span class="text-[10px] ${st} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`;
         };
 
-        // --- Firebase Initializers ---
+        // --- Strictly Custom Firebase Initialization ---
         const initFirebase = (configStr) => {
             try {
                 let config;
-                if (!configStr && typeof __firebase_config !== 'undefined') {
-                    config = JSON.parse(__firebase_config);
-                } else {
                 try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
-                }
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
-                app = initializeApp(config, "App_" + Date.now()); // Prevent double instantiation
+                app = initializeApp(config, "App_" + Date.now()); 
                 auth = getAuth(app);
                 db = getFirestore(app);
                 isCloudConfigured = true;
@@ -389,9 +381,8 @@
             const val = document.getElementById('config-input').value.trim();
             const errEl = document.getElementById('config-error');
             
-            // Auto bypass if blank and internal system exists
-            if (!val && typeof __firebase_config === 'undefined') { 
-                errEl.innerText = "配置不可为空"; 
+            if (!val) { 
+                errEl.innerText = "必须填入你的 Firebase JSON 配置"; 
                 return; 
             }
             
@@ -405,14 +396,7 @@
                 }
                 document.getElementById('login-screen').classList.add('active');
                 checkAuthAndProceed();
-            } else { errEl.innerText = "配置格式错误，请检查是否包含 apiKey (或留空使用默认)"; }
-        };
-
-        window.skipConfig = () => {
-            isCloudConfigured = false;
-            document.getElementById('config-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('login-screen').classList.add('active');
+            } else { errEl.innerText = "配置解析失败，请检查是否包含合法的 apiKey"; }
         };
 
         window.attemptLogin = () => {
@@ -425,9 +409,7 @@
                 document.getElementById('login-btn').innerText = "检查中...";
                 startSync(idInput, pinInput);
             } else {
-                tripId = idInput; tripPin = pinInput;
-                localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-                loadLocalFallback();
+                errorEl.innerText = "数据库尚未就绪，请刷新重试";
             }
         };
 
@@ -551,27 +533,14 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             return result.days;
         };
 
-        const loadLocalFallback = () => {
-            const cached = JSON.parse(localStorage.getItem('trip_local_finance_v8'));
-            if (cached) {
-                if (cached.pin && cached.pin !== tripPin) { showLoginError("访问密码错误 (本地)"); return; }
-                tripData = cached;
-            } else {
-                showLoginError("本地没有找到该缓存，且云端未连接");
-                return;
-            }
-            document.getElementById('sync-status').innerText = isCloudConfigured ? '同步失败' : '本地离线';
-            document.getElementById('sync-status').className = 'sync-badge sync-offline';
-            unlockApp();
-        };
-
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured || !user) { loadLocalFallback(); return; } 
+            if (!isCloudConfigured || !user) { showLoginError("环境未就绪"); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
-            const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', reqId);
+            // 绝对路径锁定：回归到你的个人服务器的根集合 travel_plans
+            const tripRef = doc(db, 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
                 if (snap.exists()) {
@@ -635,22 +604,32 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 }
             }, (error) => {
                 console.error("同步失败:", error);
-                if(tripId) loadLocalFallback(); else showLoginError("网络权限错误");
+                if (error.code === 'permission-denied' || error.message.includes('Missing')) {
+                    showLoginError("数据库被拒：请确保你的 Firebase 已在控制台允许匿名登录，并放行了安全规则。");
+                } else {
+                    showLoginError("网络异常或配置错误");
+                }
             });
         };
 
         const saveToCloud = async () => {
-            if (!isCloudConfigured || !user || !tripId || !tripData) {
-                localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
-                return;
-            }
+            if (!isCloudConfigured || !user || !tripId || !tripData) return;
             try { 
-                const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', tripId);
+                const tripRef = doc(db, 'travel_plans', tripId);
                 await setDoc(tripRef, tripData); 
             } catch (err) {
                 console.error("Save Error:", err);
             }
-            localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+        };
+
+        window.logoutTrip = () => {
+            openModal("退出当前行程", "切换行程或创建新行程", [
+                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存在您自己的 Firebase 云端中。' }
+            ], () => {
+                localStorage.removeItem('trip_sync_id');
+                localStorage.removeItem('trip_sync_pin');
+                location.reload();
+            });
         };
 
         window.changeView = (view) => {
@@ -963,12 +942,12 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             </div>
                         </div>
                     </div>
-
+                    
                     <div class="grid grid-cols-2 gap-2 mt-2 col-span-1 md:col-span-2">
                         <button onclick="window.openMagicEvent()" class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 hover:from-blue-100 hover:to-indigo-100 transition-all flex flex-col items-center justify-center gap-2 group">
                             <i class="fas fa-magic text-blue-500 text-lg"></i>
                             <span class="text-[10px] md:text-xs font-bold text-blue-600">✨ 一句话加行程</span>
-                    </button>
+                        </button>
                         <button onclick="window.openMagicMeal()" class="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-2 group">
                             <i class="fas fa-utensils text-amber-500 text-lg"></i>
                             <span class="text-[10px] md:text-xs font-bold text-amber-600">✨ AI 荐餐厅</span>
@@ -980,8 +959,8 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         <button onclick="addMealEvent()" class="bg-white border border-slate-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-2 group">
                             <i class="fas fa-hamburger text-slate-400 text-lg"></i>
                             <span class="text-[10px] md:text-xs font-bold text-slate-600">手动加餐饮</span>
-                    </button>
-                </div>
+                        </button>
+                    </div>
                 </div>
             `;
 
@@ -1255,7 +1234,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         return `<option value="${val}" ${val===f.value?'selected':''}>${text}</option>`;
                     }).join('')}</select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400"><i class="fas fa-chevron-down text-[10px]"></i></div></div>`;
                 } else if (f.type === 'info') {
-                    inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed">${f.value}</p></div>`;
+                    inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
                 } else if (f.type === 'textarea') {
                     inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
                 } else if (f.type === 'image') {
@@ -1334,16 +1313,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
-        };
-
-        window.logoutTrip = () => {
-            openModal("退出当前行程", "切换行程或创建新行程", [
-                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存。退出后，您可以在首页输入新的同步码来创建新行程，或输入其他同步码进入已有行程。' }
-            ], () => {
-                localStorage.removeItem('trip_sync_id');
-                localStorage.removeItem('trip_sync_pin');
-                location.reload();
-            });
         };
 
         window.openSettings = () => {
@@ -1731,252 +1700,29 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
         window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
         
-        window.addGenericEvent = () => { 
-            openModal("添加行程", "", [
-                { id: 'time', label: '时间', value: '12:00' }, 
-                { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
-                { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
-                { id: 'title', label: '标题' }, { id: 'desc', label: '描述' }, { id: 'link', label: '地图链接 (可选)' }
-            ], (v) => { 
-                const day = tripData.days.find(d => d.id === tripData.currentDay); 
-                day.events.push({ ...v, note: "" }); 
-                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
-            }); 
-        };
-        
-        window.addMealEvent = () => { 
-            openModal("添加餐饮", "", [
-                { id: 'time', label: '时间', value: '12:00' }, 
-                { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
-                { id: 't1', label: '餐厅名称', placeholder: '必填' },
-                { id: 'l1', label: '餐厅链接', placeholder: '选填' },
-                { id: 'p1', label: '人均参考价', placeholder: '￥' }
-            ], (v) => { 
-                if(!v.t1) return; 
-                const day = tripData.days.find(d => d.id === tripData.currentDay); 
-                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); 
-                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
-            }); 
-        };
-        
-        window.addExpense = () => { 
-            const locCur = tripData.settings?.currency || 'KRW';
-            window.openModal("新增记账", "", [
-                { id: 'item', label: '消费项目' }, 
-                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
-                { id: 'amount', label: '原币金额', inputType: 'number' }, 
-                { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ], onchange: `document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')` }, 
-                { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', style: 'display:none' },
-                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
-                { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
-            ], (v) => { 
-                if (!v.item || !v.amount) return; 
-                tripData.expenses.push({ 
-                    id: Date.now(), 
-                    date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), 
-                    item: v.item, 
-                    category: v.category, 
-                    amount: parseFloat(v.amount), 
-                    currency: v.currency, 
-                    actualCnyAmount: (v.currency === 'JPY' && v.actualCny) ? parseFloat(v.actualCny) : null,
-                    exchangeRate: "0.048", 
-                    payer: v.payer, 
-                    consumers: v.consumers,
-                    note: v.note || ''
-                }); 
-                saveToCloud(); render(); 
-            }); 
-            document.getElementById('wrap-actualCny').style.display = 'block'; 
-        };
-
-        window.editExpense = (idx) => {
-            const ev = tripData.expenses[idx];
-            let isGroup = !!ev.groupId;
-            let groupItems = isGroup ? tripData.expenses.filter(e => e.groupId === ev.groupId) : [];
-            let groupTotalLocal = isGroup ? groupItems.reduce((sum, e) => sum + e.amount, 0) : ev.amount;
-            let groupTotalCny = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualCnyAmount || 0), 0) : (ev.actualCnyAmount || '');
-            if (groupTotalCny === 0) groupTotalCny = '';
-            
-            const locCur = tripData.settings?.currency || 'KRW';
-
-            let fields = [
-                { id: 'item', label: '消费项目', value: ev.item },
-                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
-                { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
-                { id: 'currency', label: '币种', type: 'select', options: [{value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'}], value: ev.currency, onchange: `document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')` },
-            ];
-
-            if (isGroup && ev.currency !== 'CNY') {
-                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${window.getCurrencySymbol(ev.currency)}${groupTotalLocal.toFixed(0)})。请在下方填写【整单实付RMB】，系统将按比例拆分。` });
-                fields.push({ id: 'actualCny', label: '整单实付扣款 (RMB)', inputType: 'number', value: groupTotalCny, style: 'display:block' });
-            } else {
-                fields.push({ id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency !== 'CNY' ? 'display:block' : 'display:none' });
-            }
-
-            fields.push(
-                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer },
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
-            );
-
-            if (isGroup) {
-                fields.push({ id: 'receiptLabel', label: '所属小票标签 (修改将同步至整单)', value: ev.receiptLabel || '', placeholder: '例如：免税店扫货' });
-            }
-            fields.push({ id: 'note', label: '单项备注说明 (可选)', value: ev.note || '', placeholder: '例如：帮别人代购...' });
-
-            window.openModal("编辑账目", "", fields, (v) => {
-                if (!v.item || !v.amount) return;
-                ev.item = v.item;
-                ev.category = v.category;
-                ev.amount = parseFloat(v.amount);
-                ev.currency = v.currency;
-                ev.payer = v.payer;
-                ev.consumers = v.consumers;
-                ev.note = v.note || '';
-
-                if (isGroup && v.receiptLabel !== undefined) {
-                    groupItems.forEach(item => item.receiptLabel = v.receiptLabel);
-                }
-
-                if (v.currency !== 'CNY' && v.actualCny) {
-                    let totalActualCny = parseFloat(v.actualCny);
-                    if (isGroup) {
-                        groupItems.forEach(item => {
-                            item.actualCnyAmount = (item.amount / groupTotalLocal) * totalActualCny;
-                        });
-                    } else {
-                        ev.actualCnyAmount = totalActualCny;
-                    }
-                } else {
-                    ev.actualCnyAmount = null;
-                    if (isGroup && v.currency !== 'CNY') {
-                        groupItems.forEach(item => item.actualCnyAmount = null);
-                    }
-                }
-                saveToCloud(); render();
-            }, () => {
-                tripData.expenses.splice(idx, 1);
-                saveToCloud(); render();
-            });
-        };
-
-        window.editDayInfo = () => {
-            const day = tripData.days.find(d => d.id === tripData.currentDay);
-            openModal("编辑日程信息", "自定义大标题", [
-                { id: 'title', label: '当日主题大标题', value: day.title }
-            ], (v) => {
-                day.title = v.title;
-                saveToCloud(); render();
-            });
-        };
-
-        window.deleteCurrentDay = () => {
-            if (tripData.days.length <= 1) {
-                openModal("无法删除", "", [{ id: 'i', label: '提示', type: 'info', value: '行程中至少需要保留一天！' }], () => {});
-                return;
-            }
-            openModal("删除此日", "此操作不可恢复", [{ id: 'i', label: '警告', type: 'info', value: '确定删除这一天的所有行程安排吗？' }], () => {
-                tripData.days = tripData.days.filter(d => d.id !== tripData.currentDay);
-                window.recalculateAllDates();
-                tripData.currentDay = tripData.days[0].id;
-                saveToCloud(); render();
-            });
-        };
-
-        window.setDayHotel = () => { 
-            const day = tripData.days.find(d => d.id === tripData.currentDay);
-            
-            if (!tripData.isGeneric && day.id >= 3 && day.id <= 5) {
-                openModal("设置大井町酒店", "修改将同步至 Day 3 - Day 5", [
-                    { id: 't', label: '酒店名称', value: tripData.oimachiHotel?.title || '', placeholder: '例如：大井町 APA Hotel' },
-                    { id: 'l', label: '地图链接 (可选)', value: tripData.oimachiHotel?.link || '', placeholder: 'Google Maps 链接' },
-                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: tripData.oimachiHotel?.note || '', placeholder: '入住密码、确认单号等...' }
-                ], (v) => { 
-                    if (!tripData.oimachiHotel) tripData.oimachiHotel = {};
-                    tripData.oimachiHotel.title = v.t || "未设置"; 
-                    tripData.oimachiHotel.link = v.l;
-                    tripData.oimachiHotel.note = v.n;
-                    tripData.oimachiHotel.isSet = !!v.t;
-                    saveToCloud(); render(); 
-                });
-            } else {
-                openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
-                    { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
-                    { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
-                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
-                ], (v) => { 
-                    day.hotelName = v.t; 
-                    day.hotelLink = v.l;
-                    day.hotelNote = v.n;
-                    saveToCloud(); render(); 
-                });
-            }
-        };
-
-        window.addShoppingItem = () => {
-            openModal("添加商品", "", [
-                { id: 'name', label: '商品名称', placeholder: '例如：Tamburins 墨镜' },
-                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'] },
-                { id: 'price', label: '参考价', placeholder: '例如：￥899' },
-                { id: 'imgUrl', type: 'image', label: '商品图片', value: '' },
-                { id: 'note', label: '备注', placeholder: '例如：现代百货有售...' }
-            ], (v) => {
-                if(!v.name) return;
-                if(!tripData.shoppingList) tripData.shoppingList = [];
-                tripData.shoppingList.push({ id: Date.now(), ...v, bought: false });
-                saveToCloud(); render();
-            });
-        };
-
-        window.editShoppingItem = (idx) => {
-            const item = tripData.shoppingList[idx];
-            openModal("编辑商品", "", [
-                { id: 'name', label: '商品名称', value: item.name },
-                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'], value: item.source },
-                { id: 'price', label: '参考价', value: item.price },
-                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
-                { id: 'note', label: '备注', value: item.note }
-            ], (v) => { Object.assign(item, v); saveToCloud(); render(); }, () => {
-                tripData.shoppingList.splice(idx, 1); saveToCloud(); render();
-            });
-        };
-
-        window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; saveToCloud(); render(); };
-
         const checkAuthAndProceed = () => {
-            const initAuth = async () => {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (e) {
-                    console.error("Auth Error:", e);
-                    loadLocalFallback();
-                }
-            };
-
             onAuthStateChanged(auth, async (u) => {
                 user = u;
                 if (u) {
-                if (tripId) { 
-                    startSync(tripId); 
-                } else { 
-                    document.getElementById('login-screen').classList.remove('hidden'); 
-                }
+                    if (tripId) { 
+                        startSync(tripId); 
+                    } else { 
+                        document.getElementById('login-screen').classList.remove('hidden'); 
+                    }
                 }
             });
 
-            initAuth();
+            // 强制绕开宿主平台自定义 Token，使用纯净匿名登录
+            signInAnonymously(auth).catch((e) => {
+                console.error("Auth Error:", e);
+                document.getElementById('config-error').innerText = "数据库连接失败：请确保你的 Firebase 已开启匿名登录 (Anonymous Auth)。";
+                document.getElementById('config-screen').classList.remove('hidden');
+            });
         };
 
         const savedConfig = localStorage.getItem('firebase_custom_config_v2');
-        if (savedConfig !== null) {
+        if (savedConfig) {
             if (initFirebase(savedConfig)) { checkAuthAndProceed(); } 
-            else { document.getElementById('config-screen').classList.remove('hidden'); }
-        } else if (typeof __firebase_config !== 'undefined') {
-            if (initFirebase('')) { checkAuthAndProceed(); }
             else { document.getElementById('config-screen').classList.remove('hidden'); }
         } else { 
             document.getElementById('config-screen').classList.remove('hidden'); 
