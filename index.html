@@ -60,7 +60,7 @@
                     <i class="fas fa-lock text-2xl text-slate-600"></i>
                 </div>
                 <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">私有化部署</h2>
-                <p class="text-xs text-slate-500 font-medium mt-1">系统已强制开启云端校验</p>
+                <p class="text-xs text-slate-500 font-medium mt-1">系统已强制开启云端校验，必须配置 Firebase</p>
             </div>
             <textarea id="config-input" rows="7" placeholder='在此粘贴你的 Firebase Config JSON' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
             <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
@@ -269,8 +269,6 @@
         let tripData = null;
         let syncUnsubscribe = null; 
 
-        const getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
         // --- Core Base Wrappers ---
         window.showAILoading = (title, desc) => {
             document.getElementById('ai-loading-title').innerText = title || "正在呼叫 AI 大脑";
@@ -415,7 +413,7 @@
             const errorEl = document.getElementById('login-error');
             if (!idInput) { errorEl.innerText = "请输入同步码"; return; }
             
-            if (isCloudConfigured && user) {
+            if (isCloudConfigured) {
                 document.getElementById('login-btn').innerText = "检查中...";
                 startSync(idInput, pinInput);
             } else {
@@ -558,14 +556,14 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         };
 
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured || !user) { showLoginError("环境未就绪"); return; } 
+            if (!isCloudConfigured) { showLoginError("环境未就绪"); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
             
-            // 恢复绝对标准的沙盒读写路径以兼容 Security Rules
-            const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', reqId);
+            // 【核心修复】直接写向私有数据库的根节点，移除所有的 artifacts 沙盒路径
+            const tripRef = doc(db, 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
                 if (snap.exists()) {
@@ -642,12 +640,13 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         };
 
         const saveToCloud = async () => {
-            if (!isCloudConfigured || !user || !tripId || !tripData) {
+            if (!isCloudConfigured || !tripId || !tripData) {
                 localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
                 return;
             }
             try { 
-                const tripRef = doc(db, 'artifacts', getAppId(), 'public', 'data', 'travel_plans', tripId);
+                // 【核心修复】直接写向私有数据库的根节点，移除所有的 artifacts 沙盒路径
+                const tripRef = doc(db, 'travel_plans', tripId);
                 await setDoc(tripRef, tripData); 
             } catch (err) {
                 console.error("Save Error:", err);
@@ -1736,25 +1735,29 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         // 🚨 启动逻辑核心重构 🚨
         const checkAuthAndProceed = async () => {
             try {
-                // BYOD 专属：丢弃宿主 token，纯净启动匿名登录
+                // 放弃强制拦截：尝试匿名登录，失败则跳过，交由 Firestore 规则裁决
                 await signInAnonymously(auth);
             } catch (e) {
-                console.error("匿名登录失败:", e);
-                document.getElementById('config-error').innerText = "认证被拒：请前往 Firebase 控制台 Authentication 开启【Anonymous 匿名登录】。";
-                loadLocalFallback();
-                return;
+                console.warn("匿名登录失败或未开启，将尝试无鉴权直连 (依赖您的 Firestore 规则):", e.message);
             }
 
             onAuthStateChanged(auth, (u) => {
                 user = u;
-                if (u) {
-                    if (tripId) { 
-                        startSync(tripId); 
-                    } else { 
-                        document.getElementById('login-screen').classList.remove('hidden'); 
-                    }
+                if (tripId) { 
+                    startSync(tripId); 
+                } else { 
+                    document.getElementById('login-screen').classList.remove('hidden'); 
                 }
             });
+            
+            // 兜底执行
+            if (!user) {
+                if (tripId) {
+                    startSync(tripId);
+                } else {
+                    document.getElementById('login-screen').classList.remove('hidden');
+                }
+            }
         };
 
         const savedConfig = localStorage.getItem('firebase_custom_config_v2');
