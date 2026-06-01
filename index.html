@@ -83,7 +83,7 @@
             
             <input id="login-id" type="text" placeholder="同步码 (ID)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase text-center font-bold tracking-widest text-slate-800 transition-all">
             <input id="login-pin" type="password" placeholder="访问密码 (PIN)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-[0.5em] text-slate-800 transition-all">
-            <p id="login-error" class="text-red-500 text-xs font-bold mb-4 h-4"></p>
+            <p id="login-error" class="text-red-500 text-xs font-bold mb-4 min-h-[1rem] whitespace-pre-wrap"></p>
             <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider shadow-md">验证并进入</button>
         </div>
     </div>
@@ -556,13 +556,13 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         };
 
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured) { showLoginError("环境未就绪"); return; } 
+            if (!isCloudConfigured || !user) { showLoginError("环境未就绪"); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
             
-            // 【核心修复】直接写向私有数据库的根节点，移除所有的 artifacts 沙盒路径
+            // 绝对路径锁定：回归到私有服务器根节点 travel_plans
             const tripRef = doc(db, 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
@@ -631,7 +631,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 document.getElementById('sync-status').className = 'sync-badge sync-offline';
                 
                 if (error.code === 'permission-denied' || error.message.includes('Missing')) {
-                    showLoginError("数据库权限被拒：您的 Firebase Security Rules 拦截了读取请求。请检查控制台规则配置。");
+                    showLoginError("数据库权限被拒！\n请前往 Firebase 控制台 -> Firestore Database -> Rules，\n将规则修改为: allow read, write: if true;");
                 } else {
                     showLoginError("网络异常或配置错误");
                 }
@@ -645,7 +645,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 return;
             }
             try { 
-                // 【核心修复】直接写向私有数据库的根节点，移除所有的 artifacts 沙盒路径
                 const tripRef = doc(db, 'travel_plans', tripId);
                 await setDoc(tripRef, tripData); 
             } catch (err) {
@@ -1732,32 +1731,30 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
         window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
         
-        // 🚨 启动逻辑核心重构 🚨
-        const checkAuthAndProceed = async () => {
-            try {
-                // 放弃强制拦截：尝试匿名登录，失败则跳过，交由 Firestore 规则裁决
-                await signInAnonymously(auth);
-            } catch (e) {
-                console.warn("匿名登录失败或未开启，将尝试无鉴权直连 (依赖您的 Firestore 规则):", e.message);
-            }
-
+        // 🚨 修复竞态条件：强制等待 Auth 状态结算后再发起请求 🚨
+        const checkAuthAndProceed = () => {
+            let authResolved = false;
+            
             onAuthStateChanged(auth, (u) => {
                 user = u;
-                if (tripId) { 
-                    startSync(tripId); 
-                } else { 
-                    document.getElementById('login-screen').classList.remove('hidden'); 
+                if (!authResolved) {
+                    authResolved = true;
+                    if (tripId) { 
+                        startSync(tripId); 
+                    } else { 
+                        document.getElementById('login-screen').classList.remove('hidden'); 
+                    }
                 }
             });
-            
-            // 兜底执行
-            if (!user) {
-                if (tripId) {
-                    startSync(tripId);
-                } else {
-                    document.getElementById('login-screen').classList.remove('hidden');
+
+            signInAnonymously(auth).catch((e) => {
+                console.warn("匿名登录未开启，将尝试无鉴权连接:", e.message);
+                if (!authResolved) {
+                    authResolved = true;
+                    if (tripId) startSync(tripId);
+                    else document.getElementById('login-screen').classList.remove('hidden');
                 }
-            }
+            });
         };
 
         const savedConfig = localStorage.getItem('firebase_custom_config_v2');
