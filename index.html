@@ -45,8 +45,8 @@
         @keyframes scaleUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 
         .sync-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; transition: all 0.3s; white-space: nowrap; font-weight: bold; }
-        .sync-online { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-        .sync-offline { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .sync-online { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .sync-offline { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
         @media print { body { background-color: #fff !important; } }
     </style>
 </head>
@@ -57,15 +57,16 @@
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-lock text-2xl text-slate-600"></i>
+                    <i class="fas fa-database text-2xl text-slate-600"></i>
                 </div>
-                <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">私有化部署</h2>
-                <p class="text-xs text-slate-500 font-medium mt-1">系统已强制开启云端校验，必须配置 Firebase</p>
+                <h2 class="text-2xl font-poppins font-black text-slate-800 tracking-tight">连接云端</h2>
+                <p class="text-xs text-slate-500 font-medium mt-1">初始化私人数据库连接</p>
             </div>
-            <textarea id="config-input" rows="7" placeholder='在此粘贴你的 Firebase Config JSON' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
+            <textarea id="config-input" rows="7" placeholder='{\n  "apiKey": "AIzaSy...",\n  "projectId": "...",\n  ...\n}' class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl mb-2 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none resize-none text-slate-600"></textarea>
             <p id="config-error" class="text-red-500 text-xs font-bold mb-4 h-4 text-center"></p>
             <div class="flex flex-col gap-2">
-                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors shadow-md">验证数据库</button>
+                <button onclick="saveFirebaseConfig()" class="w-full bg-slate-600 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors">连接数据库</button>
+                <button onclick="skipConfig()" class="w-full bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">跳过，仅使用本地离线模式</button>
             </div>
         </div>
     </div>
@@ -75,87 +76,45 @@
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
             <div class="flex justify-center mb-5">
                 <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center shadow-md transform rotate-3">
-                    <i class="fas fa-globe-asia text-3xl text-white transform -rotate-3"></i>
+                    <i class="fas fa-layer-group text-3xl text-white transform -rotate-3"></i>
                 </div>
             </div>
             <h2 class="text-3xl font-poppins font-black text-slate-800 tracking-tight">Wander<span class="text-blue-500">Sync</span></h2>
-            <p class="text-[10px] text-slate-500 mb-8 mt-2 uppercase tracking-[0.2em] font-bold">全球协作规划引擎</p>
+            <p class="text-[10px] text-slate-500 mb-8 mt-2 uppercase tracking-[0.2em] font-bold">私密协作空间</p>
             
             <input id="login-id" type="text" placeholder="同步码 (ID)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase text-center font-bold tracking-widest text-slate-800 transition-all">
             <input id="login-pin" type="password" placeholder="访问密码 (PIN)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-[0.5em] text-slate-800 transition-all">
-            <p id="login-error" class="text-red-500 text-xs font-bold mb-4 min-h-[1rem] whitespace-pre-wrap"></p>
-            <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider shadow-md">验证并进入</button>
+            <p id="login-error" class="text-red-500 text-xs font-bold mb-4 h-4"></p>
+            <button onclick="attemptLogin()" id="login-btn" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl hover:bg-slate-700 transition-colors tracking-wider">验证并进入</button>
         </div>
     </div>
 
-    <!-- Step 2.5: Init New Workspace Screen (with AI Gen) -->
+    <!-- Step 2.5: Init New Workspace Screen -->
     <div id="init-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-lg shadow-xl border border-slate-200 modal-animate flex flex-col max-h-[90vh]">
             <div class="text-center mb-5 flex-shrink-0">
-                <h2 class="text-xl font-poppins font-black text-slate-800">构建新旅程</h2>
-                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">全局参数与AI配置</p>
+                <i class="fas fa-rocket text-3xl text-blue-500 mb-3"></i>
+                <h2 class="text-xl font-poppins font-black text-slate-800">初始化新行程</h2>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">配置目的地、货币与 AI 规划偏好</p>
             </div>
-            
-            <div class="space-y-4 overflow-y-auto px-1 pb-4 flex-1 overscroll-touch hide-scrollbar relative" id="init-scroll-area">
+            <div class="space-y-3 mb-6 overflow-y-auto px-1 pb-1 flex-1 overscroll-touch hide-scrollbar">
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label><input id="init-trip-name" type="text" placeholder="例如：关西漫游 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 <div class="grid grid-cols-2 gap-3">
-                    <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label>
-                        <input id="init-trip-name" type="text" placeholder="例如：首尔暴走 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">目的地</label>
-                        <input id="init-dest" type="text" placeholder="例: 韩国首尔" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">当地货币</label>
-                        <select id="init-currency" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                            <option value="KRW">KRW 韩国韩元</option>
-                            <option value="JPY">JPY 日本日元</option>
-                            <option value="USD">USD 美元</option>
-                            <option value="EUR">EUR 欧元</option>
-                            <option value="GBP">GBP 英镑</option>
-                            <option value="THB">THB 泰铢</option>
-                            <option value="AUD">AUD 澳元</option>
-                            <option value="CNY">CNY 人民币</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">起始日期 (可选)</label>
-                        <input id="init-start-date" type="date" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label>
-                        <input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员列表 (用逗号分隔)</label>
-                        <input id="init-members" type="text" placeholder="例如：张三, 李四" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">目的地</label><input id="init-destination" type="text" placeholder="例如：法国巴黎" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">主结算货币</label><select id="init-settlement-currency" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">起始日期 (可选)</label><input id="init-start-date" type="date" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label><input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
                 </div>
-
-                <!-- AI Section -->
-                <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 mt-2">
-                    <div class="flex items-center gap-2 mb-3">
-                        <i class="fas fa-magic text-blue-500"></i>
-                        <span class="text-xs font-bold text-blue-800">Gemini AI 智能规划 (可选)</span>
-                    </div>
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">Gemini API Key</label>
-                    <input id="init-ai-key" type="password" placeholder="输入API Key以启用智能规划..." class="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-3">
-                    
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">怎么玩？(描述偏好)</label>
-                    <textarea id="init-ai-prompt" rows="3" placeholder="例如：我们想重点打卡圣水洞咖啡店，晚上吃韩牛，还要留半天去现代百货买买买..." class="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"></textarea>
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员列表 (用逗号分隔，人数不限)</label><input id="init-members" type="text" placeholder="例如：张三, 李四, 王五" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                <div class="bg-blue-50/50 border border-blue-100 rounded-2xl p-4 space-y-3">
+                    <div class="flex items-center gap-2 text-blue-700 text-xs font-black"><i class="fas fa-magic"></i><span>Gemini AI 智能规划（可选）</span></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">Gemini API Key</label><input id="init-gemini-key" type="password" placeholder="留空则创建空行程" class="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">想去的地方 / 旅行风格</label><textarea id="init-trip-prompt" rows="3" placeholder="例如：喜欢美术馆、咖啡店和本地小馆，少排队，每天不要太赶。" class="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"></textarea></div>
                 </div>
-                
             </div>
-            
-            <div class="flex flex-col gap-2 pt-3 flex-shrink-0 border-t border-slate-100">
-                <button onclick="confirmInitWorkspace(true)" id="btn-ai-gen" class="w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 shadow-md shadow-blue-200 transition-colors text-sm flex items-center justify-center">
-                    <i class="fas fa-magic mr-2"></i> 让 AI 帮我排满行程
-                </button>
-                <div class="flex gap-2 w-full">
-                    <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
-                    <button onclick="confirmInitWorkspace(false)" class="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors text-sm shadow-md">手动建立空行程</button>
-                </div>
+            <div class="flex gap-2 flex-shrink-0">
+                <button onclick="cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
+                <button onclick="confirmInitWorkspace()" class="flex-1 bg-blue-500 text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 shadow-md shadow-blue-200 transition-colors text-sm">生成并保存</button>
             </div>
         </div>
     </div>
@@ -181,19 +140,14 @@
                         <div class="min-w-0 flex-1 pr-2">
                             <h1 id="main-header-title" class="text-base md:text-lg font-poppins font-black tracking-tight text-slate-800 truncate leading-tight">Wander<span class="text-blue-500">Sync</span></h1>
                             <div class="flex items-center gap-2 mt-0.5">
-                                <span id="sync-status" class="sync-badge sync-offline">离线模式</span>
+                                <span id="sync-status" class="sync-badge sync-offline">本地离线</span>
                                 <span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2 flex-shrink-0">
-                            <button onclick="window.logoutTrip()" class="bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="退出/新建行程">
-                                <i class="fas fa-sign-out-alt"></i>
-                            </button>
-                            <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="全局设置">
-                                <i class="fas fa-sliders-h"></i>
-                            </button>
-                        </div>
                     </div>
+                    <button onclick="openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all flex-shrink-0">
+                        <i class="fas fa-sliders-h"></i>
+                    </button>
                 </header>
                 <nav id="itinerary-nav" class="mt-3">
                     <div class="flex gap-2 overflow-x-auto hide-scrollbar pb-1" id="tabs-container"></div>
@@ -211,7 +165,9 @@
                     <p id="modal-subtitle" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></p>
                 </div>
                 <div id="modal-content" class="p-6 space-y-4 overflow-y-auto text-left flex-1 overscroll-touch"></div>
-                <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0 items-center justify-between" id="modal-footer"></div>
+                
+                <div class="flex p-4 border-t border-slate-100 gap-3 bg-slate-50 flex-shrink-0 items-center justify-between" id="modal-footer">
+                </div>
             </div>
         </div>
 
@@ -258,8 +214,6 @@
 
         let app, auth, db;
         let isCloudConfigured = false;
-        let isBYOD = false; 
-        
         let tripId = localStorage.getItem('trip_sync_id') || null;
         let tripPin = localStorage.getItem('trip_sync_pin') || "";
         let pendingNewId = null;
@@ -269,7 +223,43 @@
         let tripData = null;
         let syncUnsubscribe = null; 
 
-        // --- Core Base Wrappers ---
+        const CURRENCY_OPTIONS = [
+            { code: 'CNY', name: '人民币', symbol: '¥', rateToCNY: 1 },
+            { code: 'JPY', name: '日元', symbol: '¥', rateToCNY: 0.048 },
+            { code: 'USD', name: '美元', symbol: '$', rateToCNY: 7.2 },
+            { code: 'EUR', name: '欧元', symbol: '€', rateToCNY: 7.8 },
+            { code: 'GBP', name: '英镑', symbol: '£', rateToCNY: 9.2 },
+            { code: 'KRW', name: '韩元', symbol: '₩', rateToCNY: 0.0052 },
+            { code: 'THB', name: '泰铢', symbol: '฿', rateToCNY: 0.2 },
+            { code: 'AUD', name: '澳元', symbol: 'A$', rateToCNY: 4.7 },
+            { code: 'CAD', name: '加元', symbol: 'C$', rateToCNY: 5.3 },
+            { code: 'SGD', name: '新加坡元', symbol: 'S$', rateToCNY: 5.35 },
+            { code: 'HKD', name: '港币', symbol: 'HK$', rateToCNY: 0.92 },
+            { code: 'TWD', name: '新台币', symbol: 'NT$', rateToCNY: 0.22 }
+        ];
+
+        const CATEGORY_OPTIONS = ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'];
+
+        window.getCurrencyMeta = (code) => CURRENCY_OPTIONS.find(c => c.code === code) || { code: code || 'CNY', name: code || '货币', symbol: code || '¤', rateToCNY: 1 };
+        window.getCurrencySymbol = (code) => window.getCurrencyMeta(code).symbol;
+        window.getCurrencyOptionsHtml = (selected = 'CNY') => CURRENCY_OPTIONS.map(c => `<option value="${c.code}" ${c.code === selected ? 'selected' : ''}>${c.code} ${c.name}</option>`).join('');
+        window.getSettlementCurrency = () => tripData?.settings?.settlementCurrency || tripData?.settings?.currency || 'CNY';
+        window.getEstimatedExchangeRate = (fromCurrency, toCurrency = window.getSettlementCurrency()) => {
+            const from = window.getCurrencyMeta(fromCurrency);
+            const to = window.getCurrencyMeta(toCurrency);
+            return from.rateToCNY / to.rateToCNY;
+        };
+        window.formatMoney = (amount, currency = window.getSettlementCurrency(), digits = 1) => `${window.getCurrencySymbol(currency)}${(Number(amount) || 0).toFixed(digits)} ${currency}`;
+        window.getExpenseSettlementAmount = (expense) => {
+            const settlementCurrency = window.getSettlementCurrency();
+            if (!expense) return 0;
+            if (expense.actualSettlementAmount != null && expense.actualSettlementAmount !== '') return Number(expense.actualSettlementAmount) || 0;
+            if (settlementCurrency === 'CNY' && expense.actualCnyAmount != null && expense.actualCnyAmount !== '') return Number(expense.actualCnyAmount) || 0;
+            if (expense.currency === settlementCurrency) return Number(expense.amount) || 0;
+            return (Number(expense.amount) || 0) * parseFloat(expense.exchangeRate || window.getEstimatedExchangeRate(expense.currency, settlementCurrency));
+        };
+        window.isExpenseUnsettled = (expense) => expense?.currency !== window.getSettlementCurrency() && (expense.actualSettlementAmount == null || expense.actualSettlementAmount === '') && !(window.getSettlementCurrency() === 'CNY' && expense.actualCnyAmount != null && expense.actualCnyAmount !== '');
+
         window.showAILoading = (title, desc) => {
             document.getElementById('ai-loading-title').innerText = title || "正在呼叫 AI 大脑";
             document.getElementById('ai-loading-desc').innerText = desc || "大约需要几秒钟，请稍候...";
@@ -283,33 +273,60 @@
         };
 
         window.askGemini = async (payload, apiKey, isJson = true) => {
-            if (isJson && !payload.generationConfig) {
-                payload.generationConfig = { responseMimeType: "application/json" };
-            }
-            let retries = 5;
-            let delays = [1000, 2000, 4000, 8000, 16000];
-            
-            for (let i = 0; i <= retries; i++) {
-                try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    const resData = await response.json();
-                    if (resData.error) throw new Error(resData.error.message);
-                    let text = resData.candidates[0].content.parts[0].text;
-                    if (isJson) {
-                        text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-                        return JSON.parse(text);
-                    }
-                    return text;
-                } catch (err) {
-                    if (i === retries) throw err;
-                    await new Promise(resolve => setTimeout(resolve, delays[i]));
-                }
-            }
+            if (isJson && !payload.generationConfig) payload.generationConfig = { responseMimeType: "application/json" };
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const resData = await response.json();
+            if (resData.error) throw new Error(resData.error.message);
+            let text = resData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (!isJson) return text;
+            text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+            return JSON.parse(text);
         };
+
+        const normalizeTripData = (data) => {
+            if (!data) data = structuredClone(initialDefaultData);
+            data.isGeneric = true;
+            data.tripName = data.tripName || "漫游计划";
+            data.pin = data.pin || "";
+            data.days = Array.isArray(data.days) && data.days.length ? data.days : structuredClone(initialDefaultData.days);
+            data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
+            data.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : [];
+            const existingSettings = data.settings || {};
+            data.settings = {
+                members: Array.isArray(existingSettings.members) && existingSettings.members.length ? existingSettings.members : ['成员 A', '成员 B'],
+                startDate: existingSettings.startDate || "",
+                geminiApiKey: existingSettings.geminiApiKey || "",
+                googleMapsApiKey: existingSettings.googleMapsApiKey || "",
+                destination: existingSettings.destination || "日本",
+                settlementCurrency: existingSettings.settlementCurrency || existingSettings.currency || "CNY"
+            };
+            data.days.forEach((day, index) => {
+                day.id = day.id || index + 1;
+                day.date = day.date || window.formatDateFromStart(data.settings.startDate, index);
+                day.title = day.title || `第 ${index + 1} 天行程`;
+                day.events = Array.isArray(day.events) ? day.events : [];
+                day.hotelName = day.hotelName || "";
+                day.hotelLink = day.hotelLink || "";
+                day.hotelNote = day.hotelNote || "";
+            });
+            data.expenses.forEach(expense => {
+                expense.currency = expense.currency || data.settings.settlementCurrency;
+                expense.exchangeRate = expense.exchangeRate || window.getEstimatedExchangeRate(expense.currency, data.settings.settlementCurrency).toString();
+                if (expense.actualSettlementAmount == null && data.settings.settlementCurrency === 'CNY' && expense.actualCnyAmount != null) {
+                    expense.actualSettlementAmount = expense.actualCnyAmount;
+                }
+            });
+            return data;
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const initCurrency = document.getElementById('init-settlement-currency');
+            if (initCurrency) initCurrency.innerHTML = window.getCurrencyOptionsHtml('CNY');
+        });
 
         window.formatDateFromStart = (startDateStr, dayOffset) => {
             if (!startDateStr) return `Day ${dayOffset + 1}`;
@@ -324,16 +341,6 @@
             tripData.days.forEach((day, index) => {
                 day.date = window.formatDateFromStart(tripData.settings.startDate, index);
             });
-        };
-
-        window.getCurrencySymbol = (cur) => {
-            const map = { 'JPY': '¥', 'CNY': '¥', 'KRW': '₩', 'USD': '$', 'EUR': '€', 'GBP': '£', 'THB': '฿', 'AUD': 'A$' };
-            return map[cur] || cur;
-        };
-        
-        window.getEstExchangeRate = (cur) => {
-            const map = { 'JPY': "0.048", 'KRW': "0.0053", 'USD': "7.2", 'EUR': "7.8", 'GBP': "9.1", 'THB': "0.2", 'AUD': "4.7" };
-            return map[cur] || "1.0";
         };
 
         window.getMembers = () => {
@@ -362,49 +369,48 @@
             return `<span class="text-[10px] ${st} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`;
         };
 
-        // --- Firebase Initializers ---
+        const initialDefaultData = {
+            currentDay: 1, pin: "", expenses: [], shoppingList: [],
+            isGeneric: true, tripName: "漫游计划",
+            settings: { members: ['成员 A', '成员 B'], startDate: "", geminiApiKey: "", googleMapsApiKey: "", destination: "日本", settlementCurrency: "CNY" },
+            days: [
+                { id: 1, date: "Day 1", title: "第一天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" },
+                { id: 2, date: "Day 2", title: "第二天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" },
+                { id: 3, date: "Day 3", title: "第三天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }
+            ]
+        };
+
         const initFirebase = (configStr) => {
             try {
                 let config;
-                if (configStr) {
-                    try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
-                    isBYOD = true;
-                } else {
-                    throw new Error("No config available");
-                }
-                
-                if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
-                app = initializeApp(config, "App_" + Date.now()); 
+                try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
+                if (!config.apiKey || !config.projectId) throw new Error("Invalid Config format");
+                app = initializeApp(config);
                 auth = getAuth(app);
                 db = getFirestore(app);
                 isCloudConfigured = true;
                 return true;
-            } catch (err) { 
-                console.error("Firebase init failed:", err);
-                return false; 
-            }
+            } catch (err) { return false; }
         };
 
         window.saveFirebaseConfig = () => {
             const val = document.getElementById('config-input').value.trim();
             const errEl = document.getElementById('config-error');
-            
-            if (!val) { 
-                errEl.innerText = "必须填入你的 Firebase JSON 配置"; 
-                return; 
-            }
-            
+            if(!val) { errEl.innerText = "配置不可为空"; return; }
             if (initFirebase(val)) {
                 localStorage.setItem('firebase_custom_config_v2', val);
                 document.getElementById('config-screen').classList.add('hidden');
                 document.getElementById('login-screen').classList.remove('hidden');
-                if (localStorage.getItem('trip_sync_id')) {
-                     document.getElementById('login-id').value = localStorage.getItem('trip_sync_id');
-                     document.getElementById('login-pin').value = localStorage.getItem('trip_sync_pin') || '';
-                }
                 document.getElementById('login-screen').classList.add('active');
                 checkAuthAndProceed();
-            } else { errEl.innerText = "配置解析失败，请检查是否包含合法的 apiKey"; }
+            } else { errEl.innerText = "配置格式错误，请检查是否包含 apiKey"; }
+        };
+
+        window.skipConfig = () => {
+            isCloudConfigured = false;
+            document.getElementById('config-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-screen').classList.add('active');
         };
 
         window.attemptLogin = () => {
@@ -413,11 +419,13 @@
             const errorEl = document.getElementById('login-error');
             if (!idInput) { errorEl.innerText = "请输入同步码"; return; }
             
-            if (isCloudConfigured) {
+            if (isCloudConfigured && user) {
                 document.getElementById('login-btn').innerText = "检查中...";
                 startSync(idInput, pinInput);
             } else {
-                errorEl.innerText = "数据库尚未就绪，请刷新重试";
+                tripId = idInput; tripPin = pinInput;
+                localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+                loadLocalFallback();
             }
         };
 
@@ -451,118 +459,115 @@
             pendingNewId = null; pendingNewPin = null;
         };
 
-        window.confirmInitWorkspace = async (useAI = false) => {
+        window.confirmInitWorkspace = async () => {
             const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划";
-            const dest = document.getElementById('init-dest').value.trim() || "首尔";
-            const currency = document.getElementById('init-currency').value || "KRW";
+            const destination = document.getElementById('init-destination').value.trim() || "日本";
+            const settlementCurrency = document.getElementById('init-settlement-currency').value || "CNY";
             const sDate = document.getElementById('init-start-date').value;
             const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B";
             const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+            const geminiApiKey = document.getElementById('init-gemini-key').value.trim();
+            const tripPrompt = document.getElementById('init-trip-prompt').value.trim();
             let dCount = parseInt(document.getElementById('init-days').value) || 5;
             if(dCount > 30) dCount = 30;
-            const apiKey = document.getElementById('init-ai-key').value.trim();
-            const aiPrompt = document.getElementById('init-ai-prompt').value.trim();
-
-            if (apiKey) localStorage.setItem('gemini_api_key', apiKey); 
-
-            if (useAI) {
-                if (!apiKey) {
-                    alert("请先填写 Gemini API Key 才能启用 AI 智能规划。");
-                    return;
-                }
-                window.showAILoading("AI 正在深度规划您的专属行程...", "大概需要 10-20 秒，请耐心等待");
-                
-                try {
-                    const aiDays = await generateAITrip(apiKey, dest, dCount, membersList, sDate, aiPrompt);
-                    
-                    tripData = {
-                        isGeneric: true, pin: pendingNewPin, tripName: tName,
-                        settings: { members: membersList.length > 0 ? membersList : ['我'], startDate: sDate, geminiApiKey: apiKey, destination: dest, currency: currency },
-                        currentDay: 1, expenses: [], shoppingList: [], days: aiDays
-                    };
-                    
-                    tripId = pendingNewId; tripPin = pendingNewPin;
-                    localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-                    
-                    saveToCloud(); 
-                    window.hideAILoading();
-                    unlockApp();
-                    return;
-                } catch (err) {
-                    window.hideAILoading();
-                    console.error("AI 规划失败:", err);
-                    alert("AI 规划失败，请检查 API Key 或网络环境后重试。\n错误信息: " + err.message);
-                    return;
-                }
-            }
-
             let newDays = [];
             for(let i=1; i<=dCount; i++) {
                 newDays.push({ id: i, date: window.formatDateFromStart(sDate, i - 1), title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
             }
 
             tripData = {
-                isGeneric: true, pin: pendingNewPin, tripName: tName,
-                settings: { members: membersList.length > 0 ? membersList : ['我'], startDate: sDate, geminiApiKey: apiKey, destination: dest, currency: currency },
+                isGeneric: true,
+                pin: pendingNewPin,
+                tripName: tName,
+                settings: { 
+                    members: membersList.length > 0 ? membersList : ['我'],
+                    startDate: sDate,
+                    geminiApiKey: geminiApiKey,
+                    googleMapsApiKey: "",
+                    destination: destination,
+                    settlementCurrency: settlementCurrency
+                },
                 currentDay: 1, expenses: [], shoppingList: [], days: newDays
             };
+
+            if (geminiApiKey && tripPrompt) {
+                try {
+                    window.showAILoading("Gemini 正在规划行程", "正在把你的想法变成可编辑时间线...");
+                    const generated = await window.generateInitialItinerary({ destination, settlementCurrency, dCount, sDate, tripPrompt, membersList });
+                    if (generated?.days?.length) {
+                        tripData.days = generated.days.slice(0, dCount).map((day, index) => ({
+                            id: index + 1,
+                            date: window.formatDateFromStart(sDate, index),
+                            title: day.title || `第 ${index + 1} 天行程`,
+                            events: Array.isArray(day.events) ? day.events.map(ev => ({
+                                time: ev.time || "12:00",
+                                type: ['activity', 'transport', 'hotel', 'flight', 'meal_options'].includes(ev.type) ? ev.type : 'activity',
+                                label: ev.label || '共同',
+                                title: ev.title || "待定安排",
+                                desc: ev.desc || "",
+                                link: ev.link || "",
+                                note: ev.note || "",
+                                options: Array.isArray(ev.options) ? ev.options : undefined
+                            })).sort((a, b) => (a.time || '').localeCompare(b.time || '')) : [],
+                            hotelName: day.hotelName || "",
+                            hotelLink: day.hotelLink || "",
+                            hotelNote: day.hotelNote || ""
+                        }));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("AI 规划失败，已为你创建空行程：\n" + err.message);
+                } finally {
+                    window.hideAILoading();
+                }
+            }
             
             tripId = pendingNewId; tripPin = pendingNewPin;
             localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
             saveToCloud(); unlockApp();
         };
 
-        const generateAITrip = async (apiKey, destination, dCount, membersList, sDate, userPrompt) => {
-            const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。
-参与人：${membersList.join(', ')}。
-用户的具体要求是：${userPrompt}。
-请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。
-务必生成恰好 ${dCount} 天的完整数组数据。格式如下：
-{"days": [{"id": 1, "title": "这一天的主题", "hotelName": "推荐住宿名字", "events": [{"time": "10:00", "type": "activity", "label": "共同", "title": "活动标题", "desc": "简介", "link": ""}]}]}
-type 必须是: activity, transport, hotel, meal_options, flight`;
-
+        window.generateInitialItinerary = async ({ destination, settlementCurrency, dCount, sDate, tripPrompt, membersList }) => {
             const payload = {
-                contents: [{ parts: [{ text: systemPrompt }] }],
-                generationConfig: { responseMimeType: "application/json" }
+                contents: [{
+                    parts: [{
+                        text: `你是专业旅行规划师。请为私人旅行工具生成结构化行程 JSON。
+目的地：${destination}
+主结算货币：${settlementCurrency}
+天数：${dCount}
+起始日期：${sDate || '未指定'}
+成员：${(membersList && membersList.length ? membersList : ['我']).join(', ')}
+用户偏好：${tripPrompt}
+
+只返回 JSON，不要 Markdown。结构必须为：
+{"days":[{"title":"当天主题","hotelName":"当晚住宿建议，可空","hotelLink":"Google Maps 链接，可空","hotelNote":"入住/区域建议，可空","events":[{"time":"09:30","type":"activity|transport|hotel|flight|meal_options","label":"共同","title":"安排标题","desc":"简短说明","link":"Google Maps 搜索链接，可空","note":"","options":[{"title":"餐厅名","link":"Google Maps 搜索链接","rating":"评分或推荐理由","price":"人均参考价（${settlementCurrency}）","dishes":"推荐菜"}]}]}]}
+规则：每天 3-6 个事件；餐厅可用 meal_options；链接优先使用 https://www.google.com/maps/search/?api=1&query=...；不要编造必须预订的确认信息。`
+                    }]
+                }]
             };
-            
-            const result = await window.askGemini(payload, apiKey, true);
-            
-            if (!result.days || result.days.length !== dCount) {
-                console.warn("AI returned malformed or incorrect number of days.");
-            }
-            
-            result.days.forEach((d, idx) => {
-                d.id = idx + 1; 
-                d.date = window.formatDateFromStart(sDate, idx);
-                if (!d.events) d.events = [];
-                d.events.forEach(e => { e.note = ""; });
-            });
-            return result.days;
+            return await window.askGemini(payload, tripData.settings.geminiApiKey, true);
         };
 
         const loadLocalFallback = () => {
             const cached = JSON.parse(localStorage.getItem('trip_local_finance_v8'));
             if (cached) {
                 if (cached.pin && cached.pin !== tripPin) { showLoginError("访问密码错误 (本地)"); return; }
-                tripData = cached;
+                tripData = normalizeTripData(cached);
             } else {
                 showLoginError("本地没有找到该缓存，且云端未连接");
                 return;
             }
-            document.getElementById('sync-status').innerText = '连接失败(本地模式)';
+            document.getElementById('sync-status').innerText = isCloudConfigured ? '同步失败' : '本地离线';
             document.getElementById('sync-status').className = 'sync-badge sync-offline';
             unlockApp();
         };
 
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured || !user) { showLoginError("环境未就绪"); return; } 
+            if (!isCloudConfigured) { loadLocalFallback(); return; }
             if (syncUnsubscribe) syncUnsubscribe(); 
             
             const reqId = testId || tripId;
             const reqPin = testPin !== undefined ? testPin : tripPin;
-            
-            // 绝对路径锁定：回归到私有服务器根节点 travel_plans
             const tripRef = doc(db, 'travel_plans', reqId);
             
             syncUnsubscribe = onSnapshot(tripRef, (snap) => {
@@ -592,9 +597,15 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             
                             let dynamicMembers = Array.from(membersSet).filter(m => m !== '共同' && m !== 'Together');
                             if (dynamicMembers.length === 0) dynamicMembers = ['成员 A', '成员 B'];
-                            
-                            const existingKey = cloudData.settings?.geminiApiKey || "";
-                            cloudData.settings = { members: dynamicMembers, startDate: "", geminiApiKey: existingKey, destination: "海外", currency: "KRW" };
+                            const previousSettings = cloudData.settings || {};
+                            cloudData.settings = {
+                                members: dynamicMembers,
+                                startDate: previousSettings.startDate || "",
+                                geminiApiKey: previousSettings.geminiApiKey || "",
+                                googleMapsApiKey: previousSettings.googleMapsApiKey || "",
+                                destination: previousSettings.destination || "日本",
+                                settlementCurrency: previousSettings.settlementCurrency || previousSettings.currency || "CNY"
+                            };
 
                             if (cloudData.oimachiHotel && cloudData.oimachiHotel.isSet) {
                                 (cloudData.days || []).forEach(d => {
@@ -609,7 +620,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
 
                         tripId = reqId; tripPin = reqPin;
                         localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-                        tripData = cloudData;
+                        tripData = normalizeTripData(cloudData);
                         
                         if (needsMigration) { saveToCloud(); }
 
@@ -620,47 +631,22 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 } else {
                     pendingNewId = reqId; pendingNewPin = reqPin;
                     document.getElementById('login-screen').classList.add('hidden');
-                    const cachedKey = localStorage.getItem('gemini_api_key');
-                    if(cachedKey) document.getElementById('init-ai-key').value = cachedKey;
                     document.getElementById('init-screen').classList.remove('hidden');
                     document.getElementById('init-screen').classList.add('active');
                 }
             }, (error) => {
                 console.error("同步失败:", error);
-                document.getElementById('sync-status').innerText = '权限拒绝(离线)';
-                document.getElementById('sync-status').className = 'sync-badge sync-offline';
-                
-                if (error.code === 'permission-denied' || error.message.includes('Missing')) {
-                    showLoginError("数据库权限被拒！\n请前往 Firebase 控制台 -> Firestore Database -> Rules，\n将规则修改为: allow read, write: if true;");
-                } else {
-                    showLoginError("网络异常或配置错误");
-                }
-                loadLocalFallback();
+                if(tripId) loadLocalFallback(); else showLoginError("网络权限错误");
             });
         };
 
         const saveToCloud = async () => {
-            if (!isCloudConfigured || !tripId || !tripData) {
+            if (!isCloudConfigured || !user || !tripId || !tripData) {
                 localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
                 return;
             }
-            try { 
-                const tripRef = doc(db, 'travel_plans', tripId);
-                await setDoc(tripRef, tripData); 
-            } catch (err) {
-                console.error("Save Error:", err);
-            }
+            try { await setDoc(doc(db, 'travel_plans', tripId), tripData); } catch (err) {}
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
-        };
-
-        window.logoutTrip = () => {
-            openModal("退出当前行程", "切换行程或创建新行程", [
-                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存在您自己的 Firebase 云端中。' }
-            ], () => {
-                localStorage.removeItem('trip_sync_id');
-                localStorage.removeItem('trip_sync_pin');
-                location.reload();
-            });
         };
 
         window.changeView = (view) => {
@@ -677,8 +663,8 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
 
         window.render = () => {
             if (!tripData) return;
+            tripData = normalizeTripData(tripData);
             if (!tripData.shoppingList) tripData.shoppingList = [];
-            if (!tripData.settings.currency) tripData.settings.currency = "JPY"; 
             if (currentView === 'itinerary') renderItinerary(); 
             else if (currentView === 'shopping') renderShopping();
             else renderExpenses();
@@ -698,47 +684,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             setTimeout(() => { viewer.classList.add('hidden'); document.getElementById('image-viewer-img').src = ""; }, 200);
         };
 
-        // --- ✨ Feature 2: Magic Shopping (AI Local Recommender) ---
-        window.openMagicShopping = () => {
-            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
-            if (!apiKey) {
-                openModal("未配置 API Key", "智能推荐不可用", [
-                    { id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }
-                ], () => { window.openSettings(); });
-                return;
-            }
-            
-            openModal("✨ AI 智能种草", `结合当地特色为您推荐必买好物`, [
-                { id: 'text', type: 'textarea', placeholder: '你想买点什么？或者想送给谁？预算多少？\n例如：我想给女朋友买点具有首尔本地特色的美妆产品或者潮牌小包...' }
-            ], async (v) => {
-                if (!v.text) return;
-                window.showAILoading("✨ AI 正在搜罗必买好物...", "正结合当地趋势提取精选商品");
-                
-                try {
-                    const prompt = `用户请求：${v.text}\n当前旅行目的地：${tripData.settings.destination || '海外'}\n当地货币：${tripData.settings.currency}\n请作为极其专业的当地导购，推荐2到3个绝佳的具体单品。返回严格的JSON数组格式，绝不要带Markdown，直接返回：[{"name":"具体品牌及商品名称","price":"估算价格","note":"一句话推荐理由(如在哪里好买)"}]`;
-                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
-                    const items = await window.askGemini(payload, apiKey, true);
-                    
-                    items.forEach(item => {
-                        tripData.shoppingList.push({
-                            id: Date.now() + Math.random(),
-                            name: item.name,
-                            source: '✨ AI 推荐',
-                            price: item.price,
-                            imgUrl: '',
-                            note: item.note,
-                            bought: false
-                        });
-                    });
-                    saveToCloud(); render();
-                } catch(e) {
-                    alert("AI 推荐失败：" + e.message);
-                } finally {
-                    window.hideAILoading();
-                }
-            });
-        };
-
         const renderShopping = () => {
             const main = document.getElementById('main-container');
             main.innerHTML = `
@@ -747,10 +692,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         <h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">购物清单</h3>
                         <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">种草好物</p>
                     </div>
-                    <div class="flex gap-2 flex-wrap justify-end">
-                        <button onclick="window.openMagicShopping()" class="bg-blue-50 border border-blue-100 text-blue-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-100 transition-colors flex items-center"><i class="fas fa-magic mr-1.5"></i> AI 种草</button>
-                        <button onclick="addShoppingItem()" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center group"><i class="fas fa-plus text-blue-500 mr-1.5 group-hover:scale-110 transition-transform"></i> 添加</button>
-                    </div>
+                    <button onclick="addShoppingItem()" class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center group"><i class="fas fa-plus text-blue-500 mr-2 group-hover:scale-110 transition-transform"></i> 添加商品</button>
                 </div>
                 <div id="shopping-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
             `;
@@ -781,7 +723,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2 mb-2 flex-wrap">
-                                    <span class="text-[9px] ${item.source==='✨ AI 推荐' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-600'} px-2 py-0.5 rounded-lg font-bold">${item.source || '其他'}</span>
+                                    <span class="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-bold">${item.source || '其他'}</span>
                                     <span class="text-[10px] text-slate-500 font-medium truncate">参考价: <span class="text-slate-800 font-bold">${item.price || '无'}</span></span>
                                 </div>
                                 ${item.note ? `<p class="text-[10px] text-slate-500 truncate leading-tight bg-slate-50 p-1.5 rounded-lg border border-slate-100"><i class="fas fa-info-circle mr-1 opacity-50"></i>${item.note}</p>` : ''}
@@ -792,84 +734,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     container.appendChild(div);
                 });
             }
-        };
-
-        // --- ✨ Feature 4: Magic Event Parsing ---
-        window.openMagicEvent = () => {
-            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
-            if (!apiKey) return alert("请先在设置中配置 Gemini API Key");
-            
-            openModal("✨ 一句话加行程", "自然语言输入，自动提取排版", [
-                { id: 'text', type: 'textarea', placeholder: '例如：明天下午3点半大家一起去景福宫体验韩服...' }
-            ], async (v) => {
-                if (!v.text) return;
-                window.showAILoading("✨ AI 正在生成行程卡片...");
-                try {
-                    const prompt = `提取用户的描述为结构化行程数据。成员列表: ${window.getMembers().join(', ')}。
-                    返回严格的纯JSON：{"time":"HH:MM (如果是下午记得转24小时制)","label":"成员名字 或 '共同'","type":"必须是 activity 或 meal_options 或 transport 之一","title":"简明扼要的标题","desc":"详情描述"}`;
-                    
-                    const payload = { contents: [{ parts: [{ text: `用户输入：${v.text}\n${prompt}` }] }] };
-                    const result = await window.askGemini(payload, apiKey, true);
-                    
-                    const day = tripData.days.find(d => d.id === tripData.currentDay);
-                    day.events.push({ ...result, note: "✨ AI 识别生成", link: "" });
-                    day.events.sort((a,b) => a.time.localeCompare(b.time));
-                    saveToCloud(); render();
-                } catch(e) {
-                    alert("AI 解析失败：" + e.message);
-                } finally {
-                    window.hideAILoading();
-                }
-            });
-        };
-
-        // --- ✨ Feature X: Magic Meal Recommendation ---
-        window.openMagicMeal = () => {
-            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
-            if (!apiKey) {
-                openModal("未配置 API Key", "智能推荐不可用", [
-                    { id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }
-                ], () => { window.openSettings(); });
-                return;
-            }
-            
-            openModal("✨ AI 荐餐厅", "输入偏好，自动生成带地图的餐厅推荐", [
-                { id: 'time', label: '就餐时间', value: '18:00' },
-                { id: 'text', type: 'textarea', placeholder: '例如：想在弘大附近吃正宗的韩牛烤肉，人均预算5万韩币以内，环境好一点...' }
-            ], async (v) => {
-                if (!v.text) return;
-                window.showAILoading("✨ AI 正在为您挑选餐厅...", "正在检索当地口碑好店及生成地图链接");
-                try {
-                    const dest = tripData.settings?.destination || '当地';
-                    const curr = tripData.settings?.currency || '当地货币';
-                    const prompt = `你是一个顶级美食向导。当前目的地: ${dest}。当地货币: ${curr}。
-                    用户的就餐需求：${v.text}。
-                    请推荐 1-3 家完美符合要求的真实餐厅。并为每家生成可直接打开的 Google Maps 搜索链接。
-                    Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=餐厅英文或当地语言名+${dest} (请将空格替换为+)
-                    返回严格的纯JSON：
-                    {"title":"板块标题(如: 弘大韩牛推荐)","options":[{"title":"餐厅名(当地语言及中文)","link":"GoogleMaps链接","rating":"评分(如 4.8)","price":"人均价格","dishes":"推荐必点菜品"}]}`;
-                    
-                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
-                    const result = await window.askGemini(payload, apiKey, true);
-                    
-                    const day = tripData.days.find(d => d.id === tripData.currentDay);
-                    day.events.push({
-                        time: v.time,
-                        type: "meal_options",
-                        label: "共同",
-                        title: result.title || "餐饮推荐",
-                        options: result.options || [],
-                        note: "✨ AI 智能推荐",
-                        link: ""
-                    });
-                    day.events.sort((a,b) => a.time.localeCompare(b.time));
-                    saveToCloud(); render();
-                } catch(e) {
-                    alert("AI 推荐失败：" + e.message);
-                } finally {
-                    window.hideAILoading();
-                }
-            });
         };
 
         const renderItinerary = () => {
@@ -973,25 +837,19 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="grid grid-cols-2 gap-2 mt-2 col-span-1 md:col-span-2">
-                        <button onclick="window.openMagicEvent()" class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 hover:from-blue-100 hover:to-indigo-100 transition-all flex flex-col items-center justify-center gap-2 group">
-                            <i class="fas fa-magic text-blue-500 text-lg"></i>
-                            <span class="text-[10px] md:text-xs font-bold text-blue-600">✨ 一句话加行程</span>
-                        </button>
-                        <button onclick="window.openMagicMeal()" class="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-2 group">
-                            <i class="fas fa-utensils text-amber-500 text-lg"></i>
-                            <span class="text-[10px] md:text-xs font-bold text-amber-600">✨ AI 荐餐厅</span>
-                        </button>
-                        <button onclick="addGenericEvent()" class="bg-white border border-slate-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-2 group">
-                            <i class="fas fa-plus text-slate-400 text-lg"></i>
-                            <span class="text-[10px] md:text-xs font-bold text-slate-600">手动加行程</span>
-                        </button>
-                        <button onclick="addMealEvent()" class="bg-white border border-slate-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-2 group">
-                            <i class="fas fa-hamburger text-slate-400 text-lg"></i>
-                            <span class="text-[10px] md:text-xs font-bold text-slate-600">手动加餐饮</span>
-                        </button>
-                    </div>
+
+                    <button onclick="addGenericEvent()" class="bg-white border border-slate-200 border-dashed rounded-3xl p-5 shadow-sm hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center gap-3 group min-h-[100px]">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><i class="fas fa-plus text-lg"></i></div>
+                        <span class="text-xs font-bold text-slate-600 group-hover:text-blue-600">+ 添加活动/交通</span>
+                    </button>
+                    <button onclick="addMealEvent()" class="bg-white border border-slate-200 border-dashed rounded-3xl p-5 shadow-sm hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center gap-3 group min-h-[100px]">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><i class="fas fa-utensils text-lg"></i></div>
+                        <span class="text-xs font-bold text-slate-600 group-hover:text-blue-600">+ 添加餐饮建议</span>
+                    </button>
+                    <button onclick="openPlacesRecommendations()" class="bg-white border border-slate-200 border-dashed rounded-3xl p-5 shadow-sm hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col items-center justify-center gap-3 group min-h-[100px]">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><i class="fas fa-map-marked-alt text-lg"></i></div>
+                        <span class="text-xs font-bold text-slate-600 group-hover:text-blue-600">+ Google 地图推荐</span>
+                    </button>
                 </div>
             `;
 
@@ -1019,9 +877,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                                 ${ev.type === 'meal_options' ? `
                                     <h4 class="font-bold text-slate-800 mb-3 break-words text-sm md:text-base">${ev.title}</h4>
                                     <div class="space-y-2 md:space-y-3">${ev.options.map(opt => `
-                                        <div class="bg-slate-50 p-3 md:p-4 rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm w-full">
+                                        <div class="bg-slate-50 p-3 md:p-4 rounded-2xl border border-slate-100 shadow-sm w-full">
                                             <div class="flex justify-between items-start md:items-center mb-1 gap-2">
-                                                <a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-indigo-600 leading-tight">${opt.title} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a>
+                                                <a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-blue-500 leading-tight">${opt.title} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a>
                                                 <span class="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-md font-bold whitespace-nowrap flex-shrink-0 mt-0.5 md:mt-0">⭐ ${opt.rating || '4.5'}</span>
                                             </div>
                                             <div class="text-[10px] text-slate-500 font-medium break-words leading-relaxed mt-1">人均: ${opt.price} | 必点: ${opt.dishes}</div>
@@ -1029,7 +887,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                                     `).join('')}</div>
                                 ` : `
                                     <div class="pr-2 md:pr-6">
-                                        <a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-indigo-600">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a>
+                                        <a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-blue-500 transition-colors">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a>
                                         <p class="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2 leading-relaxed font-medium break-words">${ev.desc || ''}</p>
                                     </div>
                                 `}
@@ -1040,7 +898,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             </div>
                             <div class="flex flex-col gap-2 flex-shrink-0 mt-1">
                                 <button onclick="editEvent(${idx})" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200 shadow-sm transition-all"><i class="fas fa-pen text-[10px]"></i></button>
-                                <button onclick="requestDeleteItem(${idx})" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200 shadow-sm transition-all"><i class="fas fa-trash text-[10px]"></i></button>
                             </div>
                         </div>
                     `;
@@ -1058,55 +915,16 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             return 'fa-receipt';
         };
 
-        // --- ✨ Feature 1: Magic Expense Add ---
-        window.openMagicExpense = () => {
-            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
-            if (!apiKey) return alert("请先在设置中配置 Gemini API Key");
-            
-            openModal("✨ 一句话极速记账", "自然语言输入，AI瞬间拆解入账", [
-                { id: 'text', type: 'textarea', placeholder: '例如：打车花了15000韩币，Wei垫付的...\n或者：刚才买了两瓶水，一共 400 JPY，算我的' }
-            ], async (v) => {
-                if (!v.text) return;
-                window.showAILoading("✨ AI 正在拆解账单金额...");
-                try {
-                    const prompt = `根据用户的自然语言描述，提取记账要素。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 成员列表: ${window.getMembers().join(', ')}。如果没指明是谁付的，默认填${window.getMembers()[0]}。没指明谁用，默认填"共同"。
-                    返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码(如KRW, JPY, CNY)","payer":"付款人名字","consumers":"共同或使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
-                    
-                    const payload = { contents: [{ parts: [{ text: `用户输入：${v.text}\n${prompt}` }] }] };
-                    const result = await window.askGemini(payload, apiKey, true);
-                    
-                    tripData.expenses.push({
-                        id: Date.now(),
-                        date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}),
-                        item: result.item,
-                        category: result.category || '其他/Other',
-                        amount: parseFloat(result.amount) || 0,
-                        currency: result.currency || tripData.settings.currency,
-                        actualCnyAmount: null,
-                        exchangeRate: window.getEstExchangeRate(result.currency || tripData.settings.currency),
-                        payer: result.payer,
-                        consumers: result.consumers,
-                        note: '✨ AI 提取'
-                    });
-                    saveToCloud(); render();
-                } catch(e) {
-                    alert("AI 解析失败：" + e.message);
-                } finally {
-                    window.hideAILoading();
-                }
-            });
-        };
-
         const renderExpenses = () => {
             const main = document.getElementById('main-container');
             const members = window.getMembers();
-            const locCur = tripData.settings.currency || 'KRW';
+            const settlementCurrency = window.getSettlementCurrency();
             
             let stats = {};
             members.forEach(m => stats[m] = { paid: 0, used: 0 });
             
             tripData.expenses.forEach(e => {
-                let amt = e.currency === 'CNY' ? e.amount : (e.actualCnyAmount != null && e.actualCnyAmount !== '' ? e.actualCnyAmount : (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))));
+                let amt = window.getExpenseSettlementAmount(e);
                 
                 let payer = e.payer;
                 let matchedPayer = members.find(m => m.toLowerCase() === payer?.toLowerCase());
@@ -1132,9 +950,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             members.forEach(m => {
                 let net = stats[m].paid - stats[m].used;
                 if (net > 0) {
-                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应收: <span class="text-white font-bold ml-1">+¥${net.toFixed(1)}</span></p>`;
+                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应收: <span class="text-white font-bold ml-1">+${window.formatMoney(net, settlementCurrency)}</span></p>`;
                 } else if (net < 0) {
-                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应付: <span class="text-rose-300 font-bold ml-1">-¥${Math.abs(net).toFixed(1)}</span></p>`;
+                    settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m} 应付: <span class="text-rose-300 font-bold ml-1">-${window.formatMoney(Math.abs(net), settlementCurrency)}</span></p>`;
                 } else {
                     settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m}: <span class="text-emerald-300 font-bold ml-1">结清</span></p>`;
                 }
@@ -1144,9 +962,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             let memberBoxesHtml = members.map(m => `
                 <div class="bg-white border border-slate-200 p-4 md:p-5 rounded-3xl shadow-sm flex flex-col col-span-1 justify-center">
                     <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1.5 truncate">${m}</p>
-                    <p class="text-[11px] md:text-xs text-slate-500 mb-0.5">已付: ¥${stats[m].paid.toFixed(1)}</p>
-                    <p class="text-[11px] md:text-xs text-slate-500 mb-2">消费: ¥${stats[m].used.toFixed(1)}</p>
-                    <p class="font-black text-xs md:text-sm ${stats[m].paid - stats[m].used >= 0 ? 'text-emerald-600' : 'text-rose-600'} border-t border-slate-100 pt-2 truncate">净额: ${stats[m].paid - stats[m].used > 0 ? '+' : ''}${(stats[m].paid - stats[m].used).toFixed(1)}</p>
+                    <p class="text-[11px] md:text-xs text-slate-500 mb-0.5">已付: ${window.formatMoney(stats[m].paid, settlementCurrency)}</p>
+                    <p class="text-[11px] md:text-xs text-slate-500 mb-2">消费: ${window.formatMoney(stats[m].used, settlementCurrency)}</p>
+                    <p class="font-black text-xs md:text-sm ${stats[m].paid - stats[m].used >= 0 ? 'text-emerald-600' : 'text-rose-600'} border-t border-slate-100 pt-2 truncate">净额: ${stats[m].paid - stats[m].used > 0 ? '+' : ''}${window.formatMoney(stats[m].paid - stats[m].used, settlementCurrency)}</p>
                 </div>
             `).join('');
 
@@ -1158,9 +976,8 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     </div>
                     <div class="flex gap-2 flex-wrap justify-end">
                         <button onclick="exportCSV()" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center hidden md:flex"><i class="fas fa-file-csv mr-1.5"></i> 导出 CSV</button>
-                        <button onclick="window.openMagicExpense()" class="bg-purple-50 border border-purple-100 text-purple-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-purple-100 transition-colors flex items-center"><i class="fas fa-magic mr-1.5"></i> 极速入账</button>
-                        <button onclick="openReceiptScanner()" class="bg-blue-50 border border-blue-100 text-blue-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-100 transition-colors flex items-center"><i class="fas fa-camera mr-1.5"></i> 识票</button>
-                        <button onclick="addExpense()" class="bg-slate-800 text-white px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-700 transition-colors flex items-center"><i class="fas fa-plus mr-1.5"></i> 手动</button>
+                        <button onclick="openReceiptScanner()" class="bg-blue-50 border border-blue-100 text-blue-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-100 transition-colors flex items-center"><i class="fas fa-camera mr-1.5"></i> 智能识别</button>
+                        <button onclick="addExpense()" class="bg-blue-500 text-white px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-600 transition-colors flex items-center"><i class="fas fa-plus mr-1.5"></i> 新增</button>
                     </div>
                 </div>
 
@@ -1192,7 +1009,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     const idx = tripData.expenses.length - 1 - revIdx;
                     const div = document.createElement('div');
                     
-                    const isUnsettledForeign = e.currency !== 'CNY' && (e.actualCnyAmount == null || e.actualCnyAmount === '');
+                    const isUnsettledForeign = window.isExpenseUnsettled(e);
                     const isGrouped = !!e.groupId;
                     
                     div.className = isUnsettledForeign
@@ -1201,44 +1018,38 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     
                     div.onclick = () => window.editExpense(idx);
 
-                    const cnyVal = (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))).toFixed(2);
+                    const settlementVal = window.getExpenseSettlementAmount(e);
                     const iconCls = getCatIcon(e.category || '其他/Other');
 
-                    let cnyDisplayHtml = '';
-                    if (e.currency === 'CNY') {
-                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">人民币支付</p>`;
+                    let settlementDisplayHtml = '';
+                    if (e.currency === settlementCurrency) {
+                        settlementDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">主货币支付</p>`;
                     } else if (!isUnsettledForeign) {
-                        cnyDisplayHtml = `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>实付 ¥${parseFloat(e.actualCnyAmount).toFixed(2)}</p>`;
+                        settlementDisplayHtml = `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>实付 ${window.formatMoney(settlementVal, settlementCurrency, 2)}</p>`;
                     } else {
-                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`;
+                        settlementDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ${window.formatMoney(settlementVal, settlementCurrency, 2)}</p>`;
                     }
 
-                    let groupBadgeHtml = '';
-                    if (isGrouped) {
-                         groupBadgeHtml = `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100 flex-shrink-0"><i class="fas fa-receipt"></i> ${e.receiptLabel || '小票合单'}</span>`;
-                    } else if (e.note && e.note.includes('✨ AI')) {
-                         groupBadgeHtml = `<span class="text-[8px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-bold mr-1 border border-purple-100 flex-shrink-0"><i class="fas fa-magic"></i> AI 提取</span>`;
-                    }
-                    
-                    const itemNote = (e.note && !e.note.includes('✨ AI')) ? `<div class="text-[10px] text-slate-500 mt-2 bg-slate-50 p-1.5 rounded-lg inline-block border border-slate-100 leading-tight w-fit"><i class="fas fa-quote-left opacity-40 mr-1 text-[8px]"></i>${e.note}</div>` : '';
+                    const groupBadge = isGrouped ? `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100 flex-shrink-0"><i class="fas fa-receipt"></i> ${e.receiptLabel || '小票合单'}</span>` : '';
+                    const itemNote = e.note ? `<div class="text-[10px] text-slate-500 mt-2 bg-slate-50 p-1.5 rounded-lg inline-block border border-slate-100 leading-tight w-fit"><i class="fas fa-quote-left opacity-40 mr-1 text-[8px]"></i>${e.note}</div>` : '';
 
                     div.innerHTML = `
                         <div class="flex items-center gap-4 min-w-0 pr-2">
                             <div class="w-12 h-12 rounded-2xl ${isUnsettledForeign ? 'bg-amber-100 text-amber-500' : 'bg-slate-50 text-slate-400'} flex items-center justify-center flex-shrink-0 transition-colors z-10"><i class="fas ${iconCls}"></i></div>
                             <div class="min-w-0 flex-1 z-10">
                                 <div class="flex items-center gap-2 mb-1">
-                                    ${groupBadgeHtml}
+                                    ${groupBadge}
                                     <p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>
                                     ${isUnsettledForeign ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
                                 </div>
                                 <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
-                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1 font-bold">由 ${e.consumers} 独享</p>` : ''}
                                 ${itemNote}
                             </div>
                         </div>
                         <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative z-10 pl-2 border-l border-slate-100/50">
-                            <p class="${e.currency !== 'CNY' ? 'text-slate-600' : 'text-slate-800'} font-black text-sm whitespace-nowrap">${window.getCurrencySymbol(e.currency)}${e.amount}</p>
-                            ${cnyDisplayHtml}
+                            <p class="${e.currency !== settlementCurrency ? 'text-slate-600' : 'text-slate-800'} font-black text-sm whitespace-nowrap">${window.getCurrencySymbol(e.currency)}${e.amount} ${e.currency}</p>
+                            ${settlementDisplayHtml}
                         </div>
                         <i class="fas fa-chevron-right absolute right-3 top-1/2 -translate-y-1/2 text-slate-200 text-xs opacity-50"></i>
                     `;
@@ -1259,13 +1070,9 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 if (f.style) wrap.style.cssText = f.style;
                 let inputHtml = '';
                 if (f.type === 'select') {
-                    inputHtml = `<div class="relative"><select id="f-${f.id}" class="appearance-none w-full p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 transition-all" onchange="${f.onchange || ''}">${f.options.map(o => {
-                        let val = o.value !== undefined ? o.value : o;
-                        let text = o.text !== undefined ? o.text : o;
-                        return `<option value="${val}" ${val===f.value?'selected':''}>${text}</option>`;
-                    }).join('')}</select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400"><i class="fas fa-chevron-down text-[10px]"></i></div></div>`;
+                    inputHtml = `<div class="relative"><select id="f-${f.id}" class="appearance-none w-full p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 transition-all" onchange="${f.onchange || ''}">${f.options.map(o => `<option value="${o}" ${o===f.value?'selected':''}>${o}</option>`).join('')}</select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400"><i class="fas fa-chevron-down text-[10px]"></i></div></div>`;
                 } else if (f.type === 'info') {
-                    inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
+                    inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed">${f.value}</p></div>`;
                 } else if (f.type === 'textarea') {
                     inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
                 } else if (f.type === 'image') {
@@ -1349,14 +1156,11 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.openSettings = () => {
             openModal("设置", "管理您的私人数据库及行程信息", [
                 { id: 'tName', label: '行程名称', value: tripData?.tripName || '', placeholder: '例如：漫游计划 (留空则隐藏后缀)' },
+                { id: 'destination', label: '目的地', value: tripData?.settings?.destination || '日本', placeholder: '例如：法国巴黎' },
+                { id: 'settlementCurrency', label: '主结算货币', type: 'select', options: CURRENCY_OPTIONS.map(c => c.code), value: window.getSettlementCurrency() },
                 { id: 'sDate', inputType: 'date', label: '起始日期 (修改将自动重排所有日程)', value: tripData?.settings?.startDate || '' },
-                { id: 'dest', label: '主要目的地', value: tripData?.settings?.destination || '首尔', placeholder: '如：首尔、东京' },
-                { id: 'curr', label: '主用当地货币', type: 'select', value: tripData?.settings?.currency || 'KRW', options: [
-                    {value: 'KRW', text: 'KRW 韩国韩元'}, {value: 'JPY', text: 'JPY 日本日元'}, {value: 'USD', text: 'USD 美元'},
-                    {value: 'EUR', text: 'EUR 欧元'}, {value: 'GBP', text: 'GBP 英镑'}, {value: 'THB', text: 'THB 泰铢'},
-                    {value: 'AUD', text: 'AUD 澳元'}, {value: 'CNY', text: 'CNY 人民币'}
-                ]},
-                { id: 'geminiKey', inputType: 'password', label: 'Gemini API Key (用于智能小票识别与规划)', value: tripData?.settings?.geminiApiKey || '', placeholder: '在 aistudio.google.com 获取' },
+                { id: 'geminiKey', inputType: 'password', label: 'Gemini API Key (用于智能小票识别/规划)', value: tripData?.settings?.geminiApiKey || '', placeholder: '在 aistudio.google.com 获取' },
+                { id: 'googleMapsKey', inputType: 'password', label: 'Google Maps API Key (Places 推荐)', value: tripData?.settings?.googleMapsApiKey || '', placeholder: '启用 Places API 后填入' },
                 { id: 'sid', label: '当前行程同步码 (ID)', value: tripId || '', placeholder: '例如: WEI-TRIP' },
                 { id: 'spin', label: '访问密码 (PIN)', value: tripPin || '', placeholder: '4位数字' },
                 { id: 'firebase', type: 'textarea', label: 'Firebase Config (JSON)', value: localStorage.getItem('firebase_custom_config_v2') || '', placeholder: '在此粘贴你的数据库 Config，清空则断开云端' }
@@ -1378,18 +1182,34 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 }
 
                 if (tripData) {
-                    if (v.tName.trim() !== (tripData.tripName || '')) { tripData.tripName = v.tName.trim(); dataChanged = true; }
+                    if (!tripData.settings) tripData.settings = {};
+                    if (v.tName.trim() !== (tripData.tripName || '')) {
+                        tripData.tripName = v.tName.trim();
+                        dataChanged = true;
+                    }
+                    if (v.destination.trim() !== (tripData.settings?.destination || '')) {
+                        tripData.settings.destination = v.destination.trim() || "日本";
+                        dataChanged = true;
+                    }
+                    if (v.settlementCurrency !== window.getSettlementCurrency()) {
+                        tripData.settings.settlementCurrency = v.settlementCurrency;
+                        tripData.expenses?.forEach(e => {
+                            e.exchangeRate = window.getEstimatedExchangeRate(e.currency, v.settlementCurrency).toString();
+                            e.actualSettlementAmount = null;
+                        });
+                        dataChanged = true;
+                    }
                     if (v.sDate !== (tripData.settings?.startDate || '')) {
-                        if (!tripData.settings) tripData.settings = {};
                         tripData.settings.startDate = v.sDate;
                         window.recalculateAllDates();
                         dataChanged = true;
                     }
-                    if (v.dest !== (tripData.settings?.destination || '')) { tripData.settings.destination = v.dest; dataChanged = true; }
-                    if (v.curr !== (tripData.settings?.currency || '')) { tripData.settings.currency = v.curr; dataChanged = true; }
                     if (v.geminiKey.trim() !== (tripData.settings?.geminiApiKey || '')) {
                         tripData.settings.geminiApiKey = v.geminiKey.trim();
-                        localStorage.setItem('gemini_api_key', v.geminiKey.trim());
+                        dataChanged = true;
+                    }
+                    if (v.googleMapsKey.trim() !== (tripData.settings?.googleMapsApiKey || '')) {
+                        tripData.settings.googleMapsApiKey = v.googleMapsKey.trim();
                         dataChanged = true;
                     }
                 }
@@ -1406,24 +1226,11 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         let tempReceiptData = { base64: "", items: [], payer: "", date: "" };
 
         window.openReceiptScanner = () => {
-            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            const apiKey = tripData?.settings?.geminiApiKey;
             if (!apiKey) {
-                openModal("配置 AI 大脑", "只需输入一次，自动存入云端", [
-                    { id: 'gKey', inputType: 'password', label: 'Gemini API Key', placeholder: '在此粘贴 AIzaSy...' },
-                    { id: 'info', type: 'info', value: 'API Key 将直接保存在当前行程的云端数据库中，同行旅伴可无缝共享，拒绝重复填写。前往 aistudio.google.com 免费获取。' }
-                ], (v) => {
-                    const key = v.gKey.trim();
-                    if (key) {
-                        if (!tripData.settings) tripData.settings = {};
-                        tripData.settings.geminiApiKey = key;
-                        localStorage.setItem('gemini_api_key', key);
-                        saveToCloud();
-                        const modal = document.getElementById('receipt-modal');
-                        modal.classList.remove('hidden');
-                        modal.classList.add('active');
-                        window.renderReceiptUploadUI();
-                    }
-                });
+                openModal("未配置 API Key", "智能识别不可用", [
+                    { id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key，即可开启拍照自动记账功能。您可以前往 aistudio.google.com 免费获取。' }
+                ], () => { window.openSettings(); });
                 return;
             }
             
@@ -1448,7 +1255,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         <span class="text-xs font-bold text-slate-500">点击拍照 / 上传小票</span>
                         <input type="file" accept="image/*" class="hidden" onchange="window.handleReceiptImage(event)">
                     </label>
-                    <p class="text-[10px] text-slate-400 font-medium">支持中 / 日 / 韩 / 英文实体小票识别与自动翻译</p>
+                    <p class="text-[10px] text-slate-400 font-medium">支持中 / 日 / 英文实体小票识别与自动翻译</p>
                     
                     <div id="receipt-preview-container" class="mt-6 w-full hidden flex-col items-center">
                         <div class="relative w-full aspect-[3/4] bg-slate-100 rounded-2xl overflow-hidden mb-5 border border-slate-200 shadow-inner flex items-center justify-center">
@@ -1501,7 +1308,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
             btn.disabled = true;
             btn.classList.add('opacity-70', 'cursor-not-allowed');
 
-            const apiKey = tripData.settings.geminiApiKey || localStorage.getItem('gemini_api_key');
+            const apiKey = tripData.settings.geminiApiKey;
             const base64Data = tempReceiptData.base64.split(',')[1];
 
             try {
@@ -1511,7 +1318,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     body: JSON.stringify({
                         contents: [{
                             parts: [
-                                { text: "Analyze this receipt carefully. Extract each purchased item and calculate its ACTUAL FINAL PAID PRICE. You MUST proportionally distribute any overall taxes, service charges, or overall discounts to each individual item's price. The sum of the returned items' amounts MUST EXACTLY EQUAL the final total paid amount on the receipt. DO NOT list taxes or discounts as separate items. Translate item names to Chinese. Return ONLY a valid JSON object matching exactly this structure: {\"items\": [{\"item\": \"translated name\", \"amount\": 1500, \"category\": \"餐饮/Food\"}]}. The 'category' field must be chosen from exactly one of these strings: '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'." },
+                                { text: `Analyze this receipt carefully. Destination: ${tripData.settings.destination || 'unknown'}. Settlement currency: ${window.getSettlementCurrency()}. Extract each purchased item and calculate its ACTUAL FINAL PAID PRICE in the receipt's original currency. You MUST proportionally distribute any overall taxes, service charges, or overall discounts to each individual item's price. The sum of returned items' amounts MUST EXACTLY EQUAL the final total paid amount. DO NOT list taxes or discounts as separate items. Translate item names to Chinese. Return ONLY valid JSON matching exactly: {"items": [{"item": "translated name", "amount": 1500, "category": "餐饮/Food"}]}. The category field must be one of: ${CATEGORY_OPTIONS.join(', ')}.` },
                                 { inlineData: { mimeType: "image/jpeg", data: base64Data } }
                             ]
                         }],
@@ -1522,8 +1329,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 const resData = await response.json();
                 if (resData.error) throw new Error(resData.error.message);
                 
-                let text = resData.candidates[0].content.parts[0].text;
-                text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                const text = resData.candidates[0].content.parts[0].text;
                 const result = JSON.parse(text);
                 
                 tempReceiptData.items = result.items || [];
@@ -1550,7 +1356,6 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
 
             const members = window.getMembers();
             const payerOptions = members.map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
-            const locCur = tripData.settings?.currency || 'KRW';
 
             let html = `
                 <div class="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] p-3 rounded-2xl mb-4 font-medium flex gap-2">
@@ -1567,9 +1372,8 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">付款币种</label>
-                            <select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all">
-                                <option value="${locCur}" selected>${locCur} 当地货币</option>
-                                <option value="CNY">CNY 人民币</option>
+                            <select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" onchange="document.querySelectorAll('.receipt-currency-symbol').forEach(el => el.innerText = window.getCurrencySymbol(this.value))">
+                                ${window.getCurrencyOptionsHtml(tripData.settings.settlementCurrency || 'CNY')}
                             </select>
                         </div>
                     </div>
@@ -1592,7 +1396,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                             <div class="flex gap-2 mb-2.5">
                                 <input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}">
                                 <div class="relative w-28 flex-shrink-0">
-                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(locCur)}</span>
+                                    <span class="receipt-currency-symbol absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(tripData.settings.settlementCurrency || 'CNY')}</span>
                                     <input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}">
                                 </div>
                             </div>
@@ -1627,6 +1431,7 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                 const date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
                 const groupId = 'grp_' + Date.now();
                 
+                // --- 强制从 DOM 同步最新数据 ---
                 tempReceiptData.items.forEach((item, idx) => {
                     const nameEl = document.getElementById(`ri-name-${idx}`);
                     const amtEl = document.getElementById(`ri-amt-${idx}`);
@@ -1640,10 +1445,10 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     if (noteEl) item.note = noteEl.value;
                 });
                 
-                let totalLocal = 0;
+                let groupTotalAmount = 0;
                 tempReceiptData.items.forEach(item => {
                     if (!item.item || !item.amount) return;
-                    totalLocal += parseFloat(item.amount);
+                    groupTotalAmount += parseFloat(item.amount);
                 });
 
                 let addedCount = 0;
@@ -1652,15 +1457,17 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
                     tripData.expenses.push({
                         id: Date.now() + Math.random(),
                         groupId: groupId,
-                        groupTotalJpy: totalLocal, 
+                        groupTotalJpy: currency === 'JPY' ? groupTotalAmount : null,
+                        groupTotalAmount: groupTotalAmount,
                         receiptLabel: receiptLabel,
                         date: date,
                         item: item.item,
                         category: item.category || '其他/Other',
                         amount: parseFloat(item.amount),
                         currency: currency,
+                        actualSettlementAmount: null,
                         actualCnyAmount: null,
-                        exchangeRate: window.getEstExchangeRate(currency),
+                        exchangeRate: window.getEstimatedExchangeRate(currency, window.getSettlementCurrency()).toString(),
                         payer: payer,
                         consumers: item.consumer || '共同',
                         note: item.note || ''
@@ -1684,10 +1491,11 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
 
         window.exportCSV = () => {
             if (!tripData.expenses || tripData.expenses.length === 0) return;
-            let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),支付人,使用人,小票标签,备注说明\n";
+            const settlementCurrency = window.getSettlementCurrency();
+            let csvContent = `\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付主货币(${settlementCurrency}),支付人,使用人,小票标签,备注说明\n`;
             tripData.expenses.forEach(e => {
-                let amountInCNY = e.currency === 'CNY' ? e.amount : (e.actualCnyAmount != null && e.actualCnyAmount !== '' ? e.actualCnyAmount : (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))).toFixed(2));
-                let row = `"${e.date}","${e.item?e.item.replace(/"/g, '""'):''}","${e.category||'其他'}","${e.amount}","${e.currency}","${e.exchangeRate||'1.0'}","${amountInCNY}","${e.payer}","${e.consumers}","${e.receiptLabel||''}","${e.note?e.note.replace(/"/g, '""'):''}"`;
+                let settlementAmount = window.getExpenseSettlementAmount(e).toFixed(2);
+                let row = `"${e.date}","${e.item?e.item.replace(/"/g, '""'):''}","${e.category||'其他'}","${e.amount}","${e.currency}","${e.exchangeRate||'1.0'}","${settlementAmount}","${e.payer}","${e.consumers}","${e.receiptLabel||''}","${e.note?e.note.replace(/"/g, '""'):''}"`;
                 csvContent += row + "\n";
             });
             const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
@@ -1731,38 +1539,354 @@ type 必须是: activity, transport, hotel, meal_options, flight`;
         window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; saveToCloud(); };
         window.editReview = (idx) => { const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; openModal("游后点评", "", [{ id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }], (v) => { ev.review_rating = parseInt(v.rating); ev.review_text = v.text; saveToCloud(); render(); }); };
         
-        // 🚨 修复竞态条件：强制等待 Auth 状态结算后再发起请求 🚨
-        const checkAuthAndProceed = () => {
-            let authResolved = false;
-            
-            onAuthStateChanged(auth, (u) => {
-                user = u;
-                if (!authResolved) {
-                    authResolved = true;
-                    if (tripId) { 
-                        startSync(tripId); 
-                    } else { 
-                        document.getElementById('login-screen').classList.remove('hidden'); 
+        window.addGenericEvent = () => { 
+            openModal("添加行程", "", [
+                { id: 'time', label: '时间', value: '12:00' }, 
+                { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
+                { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
+                { id: 'title', label: '标题' }, { id: 'desc', label: '描述' }, { id: 'link', label: '地图链接 (可选)' }
+            ], (v) => { 
+                const day = tripData.days.find(d => d.id === tripData.currentDay); 
+                day.events.push({ ...v, note: "" }); 
+                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
+            }); 
+        };
+        
+        window.addMealEvent = () => { 
+            openModal("添加餐饮", "", [
+                { id: 'time', label: '时间', value: '12:00' }, 
+                { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
+                { id: 't1', label: '餐厅名称', placeholder: '必填' },
+                { id: 'l1', label: '餐厅链接', placeholder: '选填' },
+                { id: 'p1', label: '人均参考价', placeholder: '￥' }
+            ], (v) => { 
+                if(!v.t1) return; 
+                const day = tripData.days.find(d => d.id === tripData.currentDay); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); 
+                day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); 
+            }); 
+        };
+
+        window.openPlacesRecommendations = () => {
+            const apiKey = tripData?.settings?.googleMapsApiKey;
+            if (!apiKey) {
+                openModal("未配置 Google Maps API Key", "Places 推荐不可用", [
+                    { id: 'i', type: 'info', label: '提示', value: '请先在设置中填写 Google Maps API Key，并确保已启用 Places API。' }
+                ], () => { window.openSettings(); });
+                return;
+            }
+            openModal("Google 地图推荐", "按目的地推荐餐厅或景点", [
+                { id: 'kind', label: '推荐类型', type: 'select', options: ['餐厅', '景点'] },
+                { id: 'keyword', label: '关键词/偏好', placeholder: '例如：本地人常去、咖啡店、博物馆、亲子' },
+                { id: 'time', label: '加入行程时间', value: '12:00' }
+            ], async (v) => {
+                await window.fetchPlacesRecommendations(v.kind, v.keyword, v.time);
+            });
+        };
+
+        window.fetchPlacesRecommendations = async (kind, keyword, time) => {
+            const apiKey = tripData?.settings?.googleMapsApiKey;
+            const destination = tripData?.settings?.destination || "";
+            const query = `${destination} ${keyword || ''} ${kind === '餐厅' ? 'restaurant food' : 'tourist attraction things to do'}`.trim();
+            window.showAILoading("正在查询 Google Maps", "为当天挑选真实地点...");
+            try {
+                const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Goog-Api-Key': apiKey,
+                        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.googleMapsUri'
+                    },
+                    body: JSON.stringify({ textQuery: query, languageCode: 'zh-CN', maxResultCount: 5 })
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) throw new Error(data.error?.message || 'Google Places 查询失败');
+                const places = (data.places || []).map(place => ({
+                    title: place.displayName?.text || '未命名地点',
+                    link: place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName?.text || query)}`,
+                    rating: place.rating ? String(place.rating) : '暂无',
+                    price: place.priceLevel ? place.priceLevel.replace('PRICE_LEVEL_', '') : '参考 Google Maps',
+                    dishes: place.formattedAddress || ''
+                }));
+                if (!places.length) throw new Error("没有找到合适推荐，请换个关键词试试");
+                window.renderPlacesRecommendationModal(kind, time, places);
+            } catch (err) {
+                console.error(err);
+                alert("Google Maps 推荐失败：\n" + err.message);
+            } finally {
+                window.hideAILoading();
+            }
+        };
+
+        window.renderPlacesRecommendationModal = (kind, time, places) => {
+            const fields = places.map((place, idx) => ({ id: `p${idx}`, type: 'info', label: place.title, value: `${kind} • ⭐ ${place.rating} • ${place.price}<br>${place.dishes || ''}` }));
+            openModal("选择推荐结果", "确认后会全部加入当前日程", fields, () => {
+                const day = tripData.days.find(d => d.id === tripData.currentDay);
+                if (kind === '餐厅') {
+                    day.events.push({ time, type: 'meal_options', title: `${tripData.settings.destination || ''}餐饮推荐`, options: places, label: '共同', note: '' });
+                } else {
+                    places.forEach((place, idx) => {
+                        const [hour, minute] = (time || '12:00').split(':').map(n => parseInt(n, 10));
+                        const eventDate = new Date(2000, 0, 1, hour || 12, minute || 0);
+                        eventDate.setMinutes(eventDate.getMinutes() + idx * 90);
+                        const eventTime = `${String(eventDate.getHours()).padStart(2, '0')}:${String(eventDate.getMinutes()).padStart(2, '0')}`;
+                        day.events.push({ time: eventTime, type: 'activity', label: '共同', title: place.title, desc: `${place.dishes || ''} ⭐ ${place.rating}`, link: place.link, note: '' });
+                    });
+                }
+                day.events.sort((a,b) => (a.time || '').localeCompare(b.time || ''));
+                saveToCloud(); render();
+            });
+        };
+        
+        window.addExpense = () => { 
+            const settlementCurrency = window.getSettlementCurrency();
+            window.openModal("新增记账", "", [
+                { id: 'item', label: '消费项目' }, 
+                { id: 'category', label: '消费分类', type: 'select', options: CATEGORY_OPTIONS }, 
+                { id: 'amount', label: '原币金额', inputType: 'number' }, 
+                { id: 'currency', label: '币种', type: 'select', options: CURRENCY_OPTIONS.map(c => c.code), value: settlementCurrency, onchange: `document.getElementById('wrap-actualSettlement').style.display = (this.value === '${settlementCurrency}' ? 'none' : 'block')` }, 
+                { id: 'actualSettlement', label: `实际扣款 (${settlementCurrency}) - 账单出后可补填`, inputType: 'number', style: 'display:none' },
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
+                { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
+            ], (v) => { 
+                if (!v.item || !v.amount) return; 
+                tripData.expenses.push({ 
+                    id: Date.now(), 
+                    date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), 
+                    item: v.item, 
+                    category: v.category, 
+                    amount: parseFloat(v.amount), 
+                    currency: v.currency, 
+                    actualSettlementAmount: (v.currency !== settlementCurrency && v.actualSettlement) ? parseFloat(v.actualSettlement) : null,
+                    actualCnyAmount: (settlementCurrency === 'CNY' && v.currency !== settlementCurrency && v.actualSettlement) ? parseFloat(v.actualSettlement) : null,
+                    exchangeRate: window.getEstimatedExchangeRate(v.currency, settlementCurrency).toString(), 
+                    payer: v.payer, 
+                    consumers: v.consumers,
+                    note: v.note || ''
+                }); 
+                saveToCloud(); render(); 
+            }); 
+            document.getElementById('wrap-actualSettlement').style.display = 'none'; 
+        };
+
+        window.editExpense = (idx) => {
+            const ev = tripData.expenses[idx];
+            const settlementCurrency = window.getSettlementCurrency();
+            let isGroup = !!ev.groupId;
+            let groupItems = isGroup ? tripData.expenses.filter(e => e.groupId === ev.groupId) : [];
+            let groupTotalOriginal = isGroup ? groupItems.reduce((sum, e) => sum + e.amount, 0) : ev.amount;
+            let groupTotalSettlement = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualSettlementAmount || (settlementCurrency === 'CNY' ? e.actualCnyAmount || 0 : 0)), 0) : (ev.actualSettlementAmount || (settlementCurrency === 'CNY' ? ev.actualCnyAmount : '') || '');
+            if (groupTotalSettlement === 0) groupTotalSettlement = '';
+
+            let fields = [
+                { id: 'item', label: '消费项目', value: ev.item },
+                { id: 'category', label: '消费分类', type: 'select', options: CATEGORY_OPTIONS, value: ev.category },
+                { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
+                { id: 'currency', label: '币种', type: 'select', options: CURRENCY_OPTIONS.map(c => c.code), value: ev.currency, onchange: `document.getElementById('wrap-actualSettlement').style.display = (this.value === '${settlementCurrency}' ? 'none' : 'block')` },
+            ];
+
+            if (isGroup && ev.currency !== settlementCurrency) {
+                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${window.getCurrencySymbol(ev.currency)}${groupTotalOriginal.toFixed(2)} ${ev.currency})。请在下方填写【整单实付 ${settlementCurrency}】，系统将按比例拆分。` });
+                fields.push({ id: 'actualSettlement', label: `整单实付扣款 (${settlementCurrency})`, inputType: 'number', value: groupTotalSettlement, style: 'display:block' });
+            } else {
+                fields.push({ id: 'actualSettlement', label: `实际扣款 (${settlementCurrency}) - 账单出后可补填`, inputType: 'number', value: ev.actualSettlementAmount || (settlementCurrency === 'CNY' ? ev.actualCnyAmount || '' : ''), style: ev.currency !== settlementCurrency ? 'display:block' : 'display:none' });
+            }
+
+            fields.push(
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer },
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
+            );
+
+            if (isGroup) {
+                fields.push({ id: 'receiptLabel', label: '所属小票标签 (修改将同步至整单)', value: ev.receiptLabel || '', placeholder: '例如：松本清药妆' });
+            }
+            fields.push({ id: 'note', label: '单项备注说明 (可选)', value: ev.note || '', placeholder: '例如：帮别人代购...' });
+
+            window.openModal("编辑账目", "", fields, (v) => {
+                if (!v.item || !v.amount) return;
+                ev.item = v.item;
+                ev.category = v.category;
+                ev.amount = parseFloat(v.amount);
+                ev.currency = v.currency;
+                ev.exchangeRate = window.getEstimatedExchangeRate(v.currency, settlementCurrency).toString();
+                ev.payer = v.payer;
+                ev.consumers = v.consumers;
+                ev.note = v.note || '';
+
+                if (isGroup && v.receiptLabel !== undefined) {
+                    groupItems.forEach(item => item.receiptLabel = v.receiptLabel);
+                }
+
+                if (v.currency !== settlementCurrency && v.actualSettlement) {
+                    let totalActualSettlement = parseFloat(v.actualSettlement);
+                    if (isGroup) {
+                        groupItems.forEach(item => {
+                            item.actualSettlementAmount = (item.amount / groupTotalOriginal) * totalActualSettlement;
+                            item.actualCnyAmount = settlementCurrency === 'CNY' ? item.actualSettlementAmount : null;
+                            item.exchangeRate = window.getEstimatedExchangeRate(item.currency, settlementCurrency).toString();
+                        });
+                    } else {
+                        ev.actualSettlementAmount = totalActualSettlement;
+                        ev.actualCnyAmount = settlementCurrency === 'CNY' ? totalActualSettlement : null;
+                    }
+                } else {
+                    ev.actualSettlementAmount = null;
+                    ev.actualCnyAmount = null;
+                    if (isGroup && v.currency !== settlementCurrency) {
+                        groupItems.forEach(item => {
+                            item.actualSettlementAmount = null;
+                            item.actualCnyAmount = null;
+                            item.exchangeRate = window.getEstimatedExchangeRate(item.currency, settlementCurrency).toString();
+                        });
                     }
                 }
+                saveToCloud(); render();
+            }, () => {
+                tripData.expenses.splice(idx, 1);
+                saveToCloud(); render();
             });
+        };
 
-            signInAnonymously(auth).catch((e) => {
-                console.warn("匿名登录未开启，将尝试无鉴权连接:", e.message);
-                if (!authResolved) {
-                    authResolved = true;
-                    if (tripId) startSync(tripId);
-                    else document.getElementById('login-screen').classList.remove('hidden');
+        window.editEvent = (idx) => { 
+            const day = tripData.days.find(d => d.id === tripData.currentDay); const ev = day.events[idx]; 
+            if(ev.type === 'meal_options') {
+                openModal("编辑餐饮", "", [{ id: 'time', label: '时间', value: ev.time }, { id: 'title', label: '餐厅名', value: ev.options[0].title }], (v) => { ev.time = v.time; ev.options[0].title = v.title; day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); });
+            } else {
+                openModal("编辑", "", [
+                    { id: 'time', label: '时间', value: ev.time }, 
+                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label }, 
+                    { id: 'title', label: '标题', value: ev.title }, 
+                    { id: 'desc', label: '描述', value: ev.desc },
+                    { id: 'link', label: '地图链接 (可选)', value: ev.link || '' }
+                ], (v) => { Object.assign(ev, v); day.events.sort((a,b) => a.time.localeCompare(b.time)); saveToCloud(); render(); }); 
+            }
+        };
+
+        window.requestDeleteItem = (idx) => { openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定删除此项？' }], () => { tripData.days.find(d => d.id === tripData.currentDay).events.splice(idx, 1); saveToCloud(); render(); }); };
+        
+        window.addNewDay = () => {
+            const newId = tripData.days.length > 0 ? Math.max(...tripData.days.map(d => d.id)) + 1 : 1;
+            const dayIndex = tripData.days.length;
+            const newDateStr = window.formatDateFromStart(tripData?.settings?.startDate, dayIndex);
+            
+            tripData.days.push({ id: newId, date: newDateStr, title: `新增日程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
+            tripData.currentDay = newId;
+            saveToCloud(); render();
+        };
+
+        window.editDayInfo = () => {
+            const day = tripData.days.find(d => d.id === tripData.currentDay);
+            openModal("编辑日程信息", "自定义大标题", [
+                { id: 'title', label: '当日主题大标题', value: day.title }
+            ], (v) => {
+                day.title = v.title;
+                saveToCloud(); render();
+            });
+        };
+
+        window.deleteCurrentDay = () => {
+            if (tripData.days.length <= 1) {
+                openModal("无法删除", "", [{ id: 'i', label: '提示', type: 'info', value: '行程中至少需要保留一天！' }], () => {});
+                return;
+            }
+            openModal("删除此日", "此操作不可恢复", [{ id: 'i', label: '警告', type: 'info', value: '确定删除这一天的所有行程安排吗？' }], () => {
+                tripData.days = tripData.days.filter(d => d.id !== tripData.currentDay);
+                window.recalculateAllDates();
+                tripData.currentDay = tripData.days[0].id;
+                saveToCloud(); render();
+            });
+        };
+
+        window.setDayHotel = () => { 
+            const day = tripData.days.find(d => d.id === tripData.currentDay);
+            
+            if (!tripData.isGeneric && day.id >= 3 && day.id <= 5) {
+                openModal("设置大井町酒店", "修改将同步至 Day 3 - Day 5", [
+                    { id: 't', label: '酒店名称', value: tripData.oimachiHotel?.title || '', placeholder: '例如：大井町 APA Hotel' },
+                    { id: 'l', label: '地图链接 (可选)', value: tripData.oimachiHotel?.link || '', placeholder: 'Google Maps 链接' },
+                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: tripData.oimachiHotel?.note || '', placeholder: '入住密码、确认单号等...' }
+                ], (v) => { 
+                    if (!tripData.oimachiHotel) tripData.oimachiHotel = {};
+                    tripData.oimachiHotel.title = v.t || "未设置"; 
+                    tripData.oimachiHotel.link = v.l;
+                    tripData.oimachiHotel.note = v.n;
+                    tripData.oimachiHotel.isSet = !!v.t;
+                    saveToCloud(); render(); 
+                });
+            } else {
+                openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [
+                    { id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：APA Hotel' },
+                    { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: 'Google Maps 链接' },
+                    { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }
+                ], (v) => { 
+                    day.hotelName = v.t; 
+                    day.hotelLink = v.l;
+                    day.hotelNote = v.n;
+                    saveToCloud(); render(); 
+                });
+            }
+        };
+
+        window.addShoppingItem = () => {
+            openModal("添加商品", "", [
+                { id: 'name', label: '商品名称', placeholder: '例如：SK-II 神仙水' },
+                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'] },
+                { id: 'price', label: '参考价', placeholder: '例如：￥899' },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: '' },
+                { id: 'note', label: '备注', placeholder: '例如：松本清有售...' }
+            ], (v) => {
+                if(!v.name) return;
+                if(!tripData.shoppingList) tripData.shoppingList = [];
+                tripData.shoppingList.push({ id: Date.now(), ...v, bought: false });
+                saveToCloud(); render();
+            });
+        };
+
+        window.editShoppingItem = (idx) => {
+            const item = tripData.shoppingList[idx];
+            openModal("编辑商品", "", [
+                { id: 'name', label: '商品名称', value: item.name },
+                { id: 'source', label: '种草来源', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '其他'], value: item.source },
+                { id: 'price', label: '参考价', value: item.price },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
+                { id: 'note', label: '备注', value: item.note }
+            ], (v) => { Object.assign(item, v); saveToCloud(); render(); }, () => {
+                tripData.shoppingList.splice(idx, 1); saveToCloud(); render();
+            });
+        };
+
+        window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; saveToCloud(); render(); };
+
+        const checkAuthAndProceed = () => {
+            onAuthStateChanged(auth, async (u) => {
+                user = u;
+                if (tripId) { 
+                    startSync(tripId); 
+                } else { 
+                    const loginScreen = document.getElementById('login-screen');
+                    loginScreen.classList.remove('hidden'); 
+                    loginScreen.classList.add('active');
                 }
             });
+            (async () => {
+                try { await signInAnonymously(auth); } 
+                catch (e) { console.error("Auth Error:", e); loadLocalFallback(); }
+            })();
         };
 
         const savedConfig = localStorage.getItem('firebase_custom_config_v2');
         if (savedConfig) {
             if (initFirebase(savedConfig)) { checkAuthAndProceed(); } 
-            else { document.getElementById('config-screen').classList.remove('hidden'); }
+            else { 
+                const configScreen = document.getElementById('config-screen');
+                configScreen.classList.remove('hidden'); 
+                configScreen.classList.add('active');
+            }
         } else { 
-            document.getElementById('config-screen').classList.remove('hidden'); 
+            const configScreen = document.getElementById('config-screen');
+            configScreen.classList.remove('hidden'); 
+            configScreen.classList.add('active');
         }
     </script>
 </body>
