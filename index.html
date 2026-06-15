@@ -14,12 +14,12 @@
                     <h2 style="color:#1e293b;margin:0 0 10px 0;font-size:20px;">系统遭遇致命崩溃</h2>
                     <p style="color:#64748b;font-size:12px;background:#f1f5f9;padding:10px;border-radius:8px;word-break:break-all;max-width:100%;">${message}</p>
                     <p style="color:#94a3b8;font-size:11px;margin-top:10px;">这通常是由于浏览器残留的旧版本脏数据引起的。</p>
-                    <button onclick="localStorage.clear(); sessionStorage.clear(); alert('缓存已清除，请手动刷新整个浏览器页面恢复正常。');" style="margin-top:30px;padding:15px 30px;background:#ef4444;color:white;border:none;border-radius:12px;font-size:14px;font-weight:bold;box-shadow:0 4px 6px -1px rgba(239, 68, 68, 0.3);cursor:pointer;width:100%;">
-                        一键清除毒化缓存
+                    <button onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload();" style="margin-top:30px;padding:15px 30px;background:#ef4444;color:white;border:none;border-radius:12px;font-size:14px;font-weight:bold;box-shadow:0 4px 6px -1px rgba(239, 68, 68, 0.3);cursor:pointer;width:100%;">
+                        清除毒化缓存并重启
                     </button>
                 </div>
             `;
-            return true; 
+            return true; // 阻止错误向上冒泡
         };
         window.addEventListener('unhandledrejection', function(event) {
             window.onerror("Unhandled Promise Rejection: " + event.reason, window.location.href, 0, 0, event.reason);
@@ -65,7 +65,6 @@
 </head>
 <body class="print:bg-white print:pb-0 pb-32 w-full max-w-full">
 
-    <!-- Config Screen -->
     <div id="config-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
@@ -84,7 +83,6 @@
         </div>
     </div>
 
-    <!-- Login Screen -->
     <div id="login-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
             <div class="flex justify-center mb-5">
@@ -101,7 +99,6 @@
         </div>
     </div>
 
-    <!-- Init Screen -->
     <div id="init-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-5 md:p-8 w-full max-w-lg shadow-xl border border-slate-200 modal-animate flex flex-col max-h-[90vh] overflow-hidden">
             <div id="init-form-view" class="flex flex-col flex-1 min-h-0">
@@ -203,7 +200,7 @@
                             <div class="flex items-center gap-2 mt-0.5"><span id="sync-status" class="sync-badge sync-offline">离线模式</span><span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span></div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
-                            <!-- 💡 登出和设置按钮直接执行内存重启 💡 -->
+                            <!-- 💡 登出按钮调用 window.logoutTrip() 💡 -->
                             <button onclick="window.logoutTrip()" class="bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="退出/新建行程"><i class="fas fa-sign-out-alt"></i></button>
                             <button onclick="window.openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="全局设置"><i class="fas fa-sliders-h"></i></button>
                         </div>
@@ -281,26 +278,16 @@
         let tripData = null;
         let syncUnsubscribe = null; 
 
-        // 🚨 修复：预先填充 DOM 使得自动登录逻辑能够顺利穿透验证 🚨
-        window.addEventListener('DOMContentLoaded', () => {
-            if (tripId) {
-                document.getElementById('login-id').value = tripId;
-                document.getElementById('login-pin').value = tripPin;
-            }
-        });
-
         window.getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        
-        window.getTripDocRef = (id) => { 
-            return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id); 
-        };
+        window.getTripDocRef = (id) => { return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id); };
 
         window.saveToCloud = async () => {
             if (!tripId || !tripData) return;
             localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
-
-            if (!isCloudConfigured || !user) return;
+            
+            // 🚨 破解死锁：移除 || !user 的强制校验，直接依赖 Firestore 宽容规则放行 🚨
+            if (!isCloudConfigured) return;
             try { await setDoc(window.getTripDocRef(tripId), tripData); } catch (err) { console.error("Save Error:", err); }
         };
 
@@ -311,8 +298,7 @@
                     try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
                     isBYOD = true;
                 } else if (typeof __firebase_config !== 'undefined') {
-                    config = JSON.parse(__firebase_config);
-                    isBYOD = false;
+                    config = JSON.parse(__firebase_config); isBYOD = false;
                 } else { return false; }
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
                 if (getApps().length === 0) app = initializeApp(config); else app = getApp();
@@ -335,7 +321,6 @@
         window.skipConfig = () => { isCloudConfigured = false; document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); };
 
         window.attemptLogin = () => {
-            // 🚨 修复：即使 DOM 还没渲染完，也能通过 fallback 变量获取到值
             const idInput = document.getElementById('login-id').value.trim().toUpperCase() || tripId; 
             const pinInput = document.getElementById('login-pin').value.trim() || tripPin;
             if (!idInput) { document.getElementById('login-error').innerText = "请输入同步码"; return; }
@@ -357,24 +342,14 @@
             window.render();
         };
 
-        // 🚨 修复：废弃 reload，采用内存级软重启 🚨
+        // 🚨 修复登出函数，将其挂载到全局作用域 🚨
         window.logoutTrip = () => {
             window.openModal("退出当前行程", "切换行程或创建新行程", [
-                { id: 'i', type: 'info', label: '提示', value: '退出后，您需要重新输入同步码与密码才能再次进入。' }
+                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存在云端或本地缓存中。' }
             ], () => {
                 localStorage.removeItem('trip_sync_id');
                 localStorage.removeItem('trip_sync_pin');
-                tripId = null;
-                tripPin = "";
-                tripData = null;
-                if(syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
-                document.getElementById('login-id').value = '';
-                document.getElementById('login-pin').value = '';
-                document.getElementById('app-wrap').classList.add('hidden');
-                document.getElementById('login-screen').classList.remove('hidden');
-                document.getElementById('sync-status').innerText = '未同步';
-                document.getElementById('sync-status').className = 'sync-badge sync-offline';
-                window.closeModal();
+                window.location.reload();
             });
         };
 
@@ -382,17 +357,7 @@
             if(confirm("🚨 危险操作：确定要彻底销毁当前同步码关联的所有行程数据吗？\n删除后云端和本地均无法恢复！")) {
                 if (isCloudConfigured && tripId) { try { await deleteDoc(window.getTripDocRef(tripId)); } catch(e) {} }
                 localStorage.removeItem('trip_sync_id'); localStorage.removeItem('trip_sync_pin'); localStorage.removeItem(`trip_local_${tripId}`); localStorage.removeItem('trip_local_finance_v8');
-                
-                // 内存级软重启，防止 iframe 跨域报错
-                tripId = null; tripPin = ""; tripData = null;
-                if(syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
-                document.getElementById('login-id').value = '';
-                document.getElementById('login-pin').value = '';
-                document.getElementById('app-wrap').classList.add('hidden');
-                document.getElementById('login-screen').classList.remove('hidden');
-                document.getElementById('sync-status').innerText = '未同步';
-                document.getElementById('sync-status').className = 'sync-badge sync-offline';
-                window.closeModal();
+                location.reload();
             }
         };
 
@@ -466,7 +431,8 @@
         };
 
         const startSync = (testId, testPin) => {
-            if (!isCloudConfigured || !user) { loadLocalFallback(); return; } 
+            // 🚨 破解死锁：移除 || !user 的强制校验，无视 Auth 状态强行穿透拉取数据 🚨
+            if (!isCloudConfigured) { loadLocalFallback(); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             const reqId = testId || tripId; const reqPin = testPin !== undefined ? testPin : tripPin;
             
@@ -489,18 +455,9 @@
                     document.getElementById('init-screen').classList.remove('hidden'); document.getElementById('init-form-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('hidden'); document.getElementById('init-screen').classList.add('active');
                 }
             }, (error) => {
-                console.error("同步失败:", error); 
-                document.getElementById('sync-status').innerText = '连接异常(离线)'; 
-                document.getElementById('sync-status').className = 'sync-badge sync-offline';
-                
-                // 🚨 明确针对 CORS 拦截和 Firebase 权限错误的反馈 🚨
-                if (error.code === 'permission-denied' || error.message.includes('Missing')) { 
-                    showLoginError("数据库权限不足！\n请检查 Firestore Rules，或确保控制台的 Authentication 中已开启匿名登录（Anonymous）。"); 
-                } else if (error.message.includes('network') || error.message.includes('CORS') || String(error).includes('access control')) {
-                    showLoginError("触发网络异常或跨域拦截(CORS)。\n可能是被浏览器广告拦截插件阻断，或是 Google Cloud API 密钥设置中未将 localhost / 127.0.0.1 放入白名单。系统将降级为本地离线模式。");
-                } else {
-                    showLoginError("同步连接异常：" + error.message);
-                }
+                console.error("同步失败:", error); document.getElementById('sync-status').innerText = '权限被拒(离线)'; document.getElementById('sync-status').className = 'sync-badge sync-offline';
+                if (error.code === 'permission-denied' || error.message.includes('Missing')) { showLoginError("数据库权限不足！\n如果您连接的是自己的 Firebase，请进入控制台 Firestore Database -> Rules，\n确保规则为: allow read, write: if request.auth != null;"); } 
+                else { showLoginError("网络异常或连接中断"); }
                 loadLocalFallback();
             });
         };
@@ -889,21 +846,7 @@
                 }
 
                 if (dataChanged) { window.saveToCloud(); if (!reloadNeeded) { unlockApp(); window.render(); } }
-                
-                // 🚨 修复设置界面的内存级软重启 🚨
-                if (reloadNeeded) {
-                    tripId = null; tripPin = ""; tripData = null; user = null;
-                    if(syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
-                    document.getElementById('app-wrap').classList.add('hidden');
-                    document.getElementById('login-id').value = '';
-                    document.getElementById('login-pin').value = '';
-                    document.getElementById('config-input').value = localStorage.getItem('firebase_custom_config_v2') || '';
-                    if(localStorage.getItem('firebase_custom_config_v2')) {
-                        document.getElementById('login-screen').classList.remove('hidden');
-                    } else {
-                        document.getElementById('config-screen').classList.remove('hidden');
-                    }
-                }
+                if (reloadNeeded) location.reload(); 
             });
         };
 
