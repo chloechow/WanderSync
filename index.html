@@ -6,7 +6,6 @@
     <title>WanderSync • Secure Entry</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
@@ -44,7 +43,6 @@
         .sync-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; transition: all 0.3s; white-space: nowrap; font-weight: bold; }
         .sync-online { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
         .sync-offline { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-        
         @media print { 
             body { background-color: #fff !important; } 
             #app-wrap, #config-screen, #login-screen, #init-screen, #custom-modal, #receipt-modal, #image-viewer, #ai-global-loading { display: none !important; }
@@ -54,7 +52,6 @@
 </head>
 <body class="print:bg-white print:pb-0 pb-32 w-full max-w-full">
 
-    <!-- Config Screen -->
     <div id="config-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
@@ -73,7 +70,6 @@
         </div>
     </div>
 
-    <!-- Login Screen -->
     <div id="login-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
             <div class="flex justify-center mb-5">
@@ -90,7 +86,6 @@
         </div>
     </div>
 
-    <!-- Init Screen -->
     <div id="init-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-5 md:p-8 w-full max-w-lg shadow-xl border border-slate-200 modal-animate flex flex-col max-h-[90vh] overflow-hidden">
             <div id="init-form-view" class="flex flex-col flex-1 min-h-0">
@@ -247,6 +242,62 @@
         import { getFirestore, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ==========================================
+        // 🚨 脏数据清洗与自愈引擎 (Deep Sanitizer) 🚨
+        // ==========================================
+        window.sanitizeTripData = (data) => {
+            if (!data || typeof data !== 'object') return null;
+            try {
+                // 1. 结构级防空指针与类型对齐
+                data.settings = data.settings || {};
+                data.settings.currency = data.settings.currency || "JPY";
+                data.settings.mapProvider = data.settings.mapProvider || "google";
+                data.settings.members = Array.isArray(data.settings.members) && data.settings.members.length > 0 ? data.settings.members : ['成员 A', '成员 B'];
+                
+                data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
+                data.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : [];
+                
+                // 2. 致命防线：重建与修复所有节点
+                if (!Array.isArray(data.days) || data.days.length === 0) {
+                    console.warn("自愈机制触发: 重建被损毁的 Days 数组");
+                    data.days = [{ id: 1, date: "Day 1", title: "行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }];
+                } else {
+                    data.days = data.days.map(d => ({
+                        id: d.id || Math.floor(Math.random() * 10000),
+                        date: d.date || "",
+                        title: d.title || "",
+                        hotelName: d.hotelName || "",
+                        hotelLink: d.hotelLink || "",
+                        hotelNote: d.hotelNote || "",
+                        events: Array.isArray(d.events) ? d.events.map(ev => ({
+                            ...ev,
+                            time: ev.time || "00:00",
+                            title: ev.title || "未命名",
+                            type: ev.type || "activity",
+                            label: ev.label || "共同",
+                            options: Array.isArray(ev.options) ? ev.options : []
+                        })) : []
+                    }));
+                }
+
+                // 3. 终极防御：严格对齐 currentDay 类型，防止 JS === 判断崩溃导致白屏
+                let parsedCurrentDay = parseInt(data.currentDay);
+                let dayExists = data.days.find(d => String(d.id) === String(parsedCurrentDay));
+                if (!dayExists) {
+                    console.warn("自愈机制触发: 修复游离的 currentDay 指针");
+                    data.currentDay = data.days[0].id;
+                } else {
+                    data.currentDay = dayExists.id; 
+                }
+
+                data.tripName = data.tripName || "WanderSync";
+                return data;
+            } catch (e) {
+                console.error("数据毒化级别过高，自愈系统崩溃:", e);
+                return null;
+            }
+        };
+
+        // ==========================================
         // 核心基础设施挂载
         // ==========================================
         let app, auth, db;
@@ -271,6 +322,7 @@
             if (!tripId || !tripData) return;
             localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+
             if (!isCloudConfigured || !user) return;
             try { await setDoc(window.getTripDocRef(tripId), tripData); } catch (err) { console.error("Save Error:", err); }
         };
@@ -284,95 +336,62 @@
                 } else if (typeof __firebase_config !== 'undefined') {
                     config = JSON.parse(__firebase_config);
                     isBYOD = false;
-                } else {
-                    return false;
-                }
+                } else { return false; }
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
                 if (getApps().length === 0) app = initializeApp(config); else app = getApp();
-                auth = getAuth(app);
-                db = getFirestore(app);
-                isCloudConfigured = true;
+                auth = getAuth(app); db = getFirestore(app); isCloudConfigured = true;
                 return true;
             } catch (err) { console.error("Firebase init failed:", err); return false; }
         };
 
         window.saveFirebaseConfig = () => {
-            const val = document.getElementById('config-input').value.trim();
-            const errEl = document.getElementById('config-error');
+            const val = document.getElementById('config-input').value.trim(); const errEl = document.getElementById('config-error');
             if (!val && typeof __firebase_config === 'undefined') { errEl.innerText = "必须填入你的 Firebase JSON 配置"; return; }
             if (initFirebase(val)) {
                 if (val) localStorage.setItem('firebase_custom_config_v2', val);
-                document.getElementById('config-screen').classList.add('hidden');
-                document.getElementById('login-screen').classList.remove('hidden');
-                if (localStorage.getItem('trip_sync_id')) {
-                     document.getElementById('login-id').value = localStorage.getItem('trip_sync_id');
-                     document.getElementById('login-pin').value = localStorage.getItem('trip_sync_pin') || '';
-                }
+                document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden');
+                if (localStorage.getItem('trip_sync_id')) { document.getElementById('login-id').value = localStorage.getItem('trip_sync_id'); document.getElementById('login-pin').value = localStorage.getItem('trip_sync_pin') || ''; }
                 checkAuthAndProceed();
             } else { errEl.innerText = "配置解析失败，请检查是否包含合法的 apiKey"; }
         };
 
-        window.skipConfig = () => {
-            isCloudConfigured = false;
-            document.getElementById('config-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-        };
+        window.skipConfig = () => { isCloudConfigured = false; document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); };
 
         window.attemptLogin = () => {
-            const idInput = document.getElementById('login-id').value.trim().toUpperCase();
-            const pinInput = document.getElementById('login-pin').value.trim();
+            const idInput = document.getElementById('login-id').value.trim().toUpperCase(); const pinInput = document.getElementById('login-pin').value.trim();
             if (!idInput) { document.getElementById('login-error').innerText = "请输入同步码"; return; }
-            tripId = idInput; tripPin = pinInput;
-            localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+            tripId = idInput; tripPin = pinInput; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
             if (isCloudConfigured) { document.getElementById('login-btn').innerText = "检查中..."; startSync(tripId, tripPin); } 
             else { loadLocalFallback(); }
         };
 
         const showLoginError = (msg) => {
-            document.getElementById('login-error').innerText = msg;
-            document.getElementById('login-btn').innerText = "验证并进入";
-            document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('app-wrap').classList.add('hidden');
+            document.getElementById('login-error').innerText = msg; document.getElementById('login-btn').innerText = "验证并进入";
+            document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('app-wrap').classList.add('hidden');
         };
 
         const unlockApp = () => {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('init-screen').classList.add('hidden');
-            document.getElementById('app-wrap').classList.remove('hidden');
+            document.getElementById('login-screen').classList.add('hidden'); document.getElementById('init-screen').classList.add('hidden'); document.getElementById('app-wrap').classList.remove('hidden');
             document.title = (tripData?.tripName || "WanderSync") + " • Workspace";
             const badge = document.getElementById('trip-name-badge');
-            if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } 
-            else { badge.classList.add('hidden'); }
+            if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
             window.render();
         };
 
         window.deleteEntireTrip = async () => {
             if(confirm("🚨 危险操作：确定要彻底销毁当前同步码关联的所有行程数据吗？\n删除后云端和本地均无法恢复！")) {
                 if (isCloudConfigured && tripId) { try { await deleteDoc(window.getTripDocRef(tripId)); } catch(e) {} }
-                localStorage.removeItem('trip_sync_id'); localStorage.removeItem('trip_sync_pin'); localStorage.removeItem(`trip_local_${tripId}`);
+                localStorage.removeItem('trip_sync_id'); localStorage.removeItem('trip_sync_pin'); localStorage.removeItem(`trip_local_${tripId}`); localStorage.removeItem('trip_local_finance_v8');
                 location.reload();
             }
         };
 
-        window.cancelInitWorkspace = () => {
-            document.getElementById('init-screen').classList.add('hidden');
-            document.getElementById('login-screen').classList.remove('hidden');
-            document.getElementById('login-btn').innerText = "验证并进入";
-            pendingNewId = null; pendingNewPin = null;
-        };
+        window.cancelInitWorkspace = () => { document.getElementById('init-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('login-btn').innerText = "验证并进入"; pendingNewId = null; pendingNewPin = null; };
 
         window.confirmInitWorkspace = async (useAI = false) => {
-            const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划";
-            const dest = document.getElementById('init-dest').value.trim() || "首尔";
-            const currency = document.getElementById('init-currency').value || "KRW";
-            const sDate = document.getElementById('init-start-date').value;
-            const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B";
-            const mapPref = document.getElementById('init-map').value || "google";
-            const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+            const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划"; const dest = document.getElementById('init-dest').value.trim() || "首尔"; const currency = document.getElementById('init-currency').value || "KRW"; const sDate = document.getElementById('init-start-date').value; const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B"; const mapPref = document.getElementById('init-map').value || "google"; const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
             let dCount = parseInt(document.getElementById('init-days').value) || 5; if(dCount > 30) dCount = 30;
-            const apiKey = document.getElementById('init-ai-key').value.trim();
-            const aiPrompt = document.getElementById('init-ai-prompt').value.trim();
-            const aiModel = document.getElementById('init-ai-model').value || 'gemini-3.5-flash';
+            const apiKey = document.getElementById('init-ai-key').value.trim(); const aiPrompt = document.getElementById('init-ai-prompt').value.trim(); const aiModel = document.getElementById('init-ai-model').value || 'gemini-3.5-flash';
             if (apiKey) localStorage.setItem('gemini_api_key', apiKey); 
 
             if (useAI) {
@@ -382,28 +401,17 @@
                     const aiDays = await window.generateAITrip(apiKey, aiModel, dest, dCount, membersList, sDate, aiPrompt, mapPref);
                     window._tempAiData = { tName, dest, currency, sDate, membersList, dCount, apiKey, aiModel, mapPref, aiDays };
                     window.hideAILoading(); window.renderAiPreview(aiDays); return;
-                } catch (err) {
-                    window.hideAILoading(); console.error("AI 规划失败:", err); alert("AI 规划失败，请检查 API Key 或网络环境后重试。\n错误信息: " + err.message); return;
-                }
+                } catch (err) { window.hideAILoading(); console.error("AI 规划失败:", err); alert("AI 规划失败，请检查 API Key 或网络环境后重试。\n错误信息: " + err.message); return; }
             }
 
-            let newDays = [];
-            for(let i=1; i<=dCount; i++) newDays.push({ id: i, date: window.formatDateFromStart(sDate, i - 1), title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
+            let newDays = []; for(let i=1; i<=dCount; i++) newDays.push({ id: i, date: window.formatDateFromStart(sDate, i - 1), title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
             tripData = { isGeneric: true, pin: pendingNewPin, tripName: tName, settings: { members: membersList.length > 0 ? membersList : ['我'], startDate: sDate, geminiApiKey: apiKey, geminiModel: aiModel, destination: dest, currency: currency, mapProvider: mapPref }, currentDay: 1, expenses: [], shoppingList: [], days: newDays };
-            tripId = pendingNewId; tripPin = pendingNewPin;
-            localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-            window.saveToCloud(); unlockApp();
+            tripId = pendingNewId; tripPin = pendingNewPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); window.saveToCloud(); unlockApp();
         };
 
         window.renderAiPreview = (days) => {
-            document.getElementById('init-form-view').classList.add('hidden');
-            document.getElementById('init-preview-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('flex');
-            let html = '';
-            days.forEach(d => {
-                html += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2 shadow-sm"><div class="font-bold text-slate-800 text-sm mb-2 border-b border-slate-200 pb-1 flex justify-between"><span>${d.date} - ${d.title}</span></div><ul class="text-xs space-y-2">`;
-                d.events.forEach(e => { html += `<li class="flex items-start gap-2"><span class="font-black text-indigo-500 whitespace-nowrap">${e.time}</span> <span class="font-bold text-slate-700">${e.title}</span></li>`; });
-                html += `</ul></div>`;
-            });
+            document.getElementById('init-form-view').classList.add('hidden'); document.getElementById('init-preview-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('flex');
+            let html = ''; days.forEach(d => { html += `<div class="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2 shadow-sm"><div class="font-bold text-slate-800 text-sm mb-2 border-b border-slate-200 pb-1 flex justify-between"><span>${d.date} - ${d.title}</span></div><ul class="text-xs space-y-2">`; d.events.forEach(e => { html += `<li class="flex items-start gap-2"><span class="font-black text-indigo-500 whitespace-nowrap">${e.time}</span> <span class="font-bold text-slate-700">${e.title}</span></li>`; }); html += `</ul></div>`; });
             document.getElementById('ai-preview-content').innerHTML = html;
         };
 
@@ -413,9 +421,7 @@
         window.confirmAiPreview = async () => {
             const data = window._tempAiData;
             tripData = { isGeneric: true, pin: pendingNewPin, tripName: data.tName, settings: { members: data.membersList.length > 0 ? data.membersList : ['我'], startDate: data.sDate, geminiApiKey: data.apiKey, geminiModel: data.aiModel, destination: data.dest, currency: data.currency, mapProvider: data.mapPref }, currentDay: 1, expenses: [], shoppingList: [], days: data.aiDays };
-            tripId = pendingNewId; tripPin = pendingNewPin;
-            localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-            await window.saveToCloud(); document.getElementById('init-screen').classList.add('hidden'); unlockApp();
+            tripId = pendingNewId; tripPin = pendingNewPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); await window.saveToCloud(); document.getElementById('init-screen').classList.add('hidden'); unlockApp();
         };
 
         window.generateAITrip = async (apiKey, modelName, destination, dCount, membersList, sDate, userPrompt, mapProvider) => {
@@ -423,15 +429,22 @@
             const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。\n参与人：${membersList.join(', ')}。\n用户的具体要求是：${userPrompt}。\n\n规划规则：\n1. 请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。\n2. 每个 Event 的 "label" 字段，必须根据描述中的人物归属感进行精确分配。如果是大家一起行动必须填"共同"；如果是特定某人负责或仅某人参与，必须从成员列表 ["${membersList.join('", "')}"] 中选一个准确的名字填入。\n3. ${mapRule}\n4. 务必生成恰好 ${dCount} 天的完整数组数据。返回严格的纯JSON（无Markdown标记），数据结构如下：\n{\n  "days": [{\n      "id": 1,\n      "title": "这一天的主题",\n      "hotelName": "推荐住宿名字",\n      "events": [{"time": "10:00", "type": "activity", "label": "成员A 或 共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"}]\n  }]\n}\ntype 必须是: activity, transport, hotel, meal_options, flight`;
             const payload = { contents: [{ parts: [{ text: systemPrompt }] }] };
             const rawData = await window.askGemini(payload, apiKey, modelName, true);
-            return (rawData.days || []).map((d, idx) => {
-                return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) };
-            });
+            return (rawData.days || []).map((d, idx) => { return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) }; });
         };
 
         const loadLocalFallback = () => {
-            const cachedStr = localStorage.getItem(`trip_local_${tripId}`);
-            const legacyCachedStr = localStorage.getItem('trip_local_finance_v8');
-            let cached = cachedStr ? JSON.parse(cachedStr) : (legacyCachedStr ? JSON.parse(legacyCachedStr) : null);
+            let cached = null;
+            try {
+                const cachedStr = localStorage.getItem(`trip_local_${tripId}`);
+                const legacyCachedStr = localStorage.getItem('trip_local_finance_v8');
+                let rawCached = cachedStr ? JSON.parse(cachedStr) : (legacyCachedStr ? JSON.parse(legacyCachedStr) : null);
+                cached = window.sanitizeTripData(rawCached);
+            } catch (e) {
+                console.error("读取本地缓存时发生崩溃，执行清空重置:", e);
+                localStorage.removeItem(`trip_local_${tripId}`);
+                localStorage.removeItem('trip_local_finance_v8');
+            }
+
             if (cached) {
                 if (cached.pin && cached.pin !== tripPin) { showLoginError("访问密码错误 (本地缓存验证失败)"); return; }
                 tripData = cached;
@@ -449,7 +462,11 @@
             
             syncUnsubscribe = onSnapshot(window.getTripDocRef(reqId), (snap) => {
                 if (snap.exists()) {
-                    let cloudData = snap.data();
+                    let cloudData = window.sanitizeTripData(snap.data());
+                    if (!cloudData) {
+                        showLoginError("云端数据结构已严重损坏，自愈失败"); return;
+                    }
+
                     if (cloudData.pin && cloudData.pin !== reqPin) { showLoginError("访问密码错误"); } 
                     else {
                         tripId = reqId; tripPin = reqPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
@@ -459,7 +476,7 @@
                     pendingNewId = reqId; pendingNewPin = reqPin;
                     document.getElementById('login-screen').classList.add('hidden');
                     const cachedKey = localStorage.getItem('gemini_api_key'); if(cachedKey) document.getElementById('init-ai-key').value = cachedKey;
-                    document.getElementById('init-screen').classList.remove('hidden'); document.getElementById('init-form-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('hidden');
+                    document.getElementById('init-screen').classList.remove('hidden'); document.getElementById('init-form-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('hidden'); document.getElementById('init-screen').classList.add('active');
                 }
             }, (error) => {
                 console.error("同步失败:", error); document.getElementById('sync-status').innerText = '权限被拒(离线)'; document.getElementById('sync-status').className = 'sync-badge sync-offline';
@@ -654,6 +671,7 @@
                     const div = document.createElement('div'); div.className = "timeline-item group w-full";
                     let dotColor = "bg-slate-300"; if(ev.type === 'flight') dotColor = "bg-blue-500"; if(ev.type === 'activity') dotColor = "bg-rose-500"; if(ev.type === 'hotel') dotColor = "bg-indigo-600"; if(ev.type === 'meal_options') dotColor = "bg-amber-400"; if(ev.type === 'transport') dotColor = "bg-emerald-400";
                     let labelHtml = window.getLabelHtml(ev.label); const safeOptions = Array.isArray(ev.options) ? ev.options : [];
+
                     div.innerHTML = `
                         <div class="timeline-dot ${dotColor}"></div>
                         <div class="flex items-start justify-between gap-2">
@@ -749,7 +767,7 @@
                 <div class="flex justify-between items-center px-1 mb-4 mt-2">
                     <div><h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">财务记账</h3><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">账单与结算</p></div>
                     <div class="flex gap-2 flex-wrap justify-end">
-                        <button onclick="window.exportCSV()" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center hidden md:flex"><i class="fas fa-file-csv mr-1.5"></i> 导出 CSV</button>
+                        <button onclick="window.exportCSV()" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center"><i class="fas fa-file-csv mr-1.5"></i> 导出 CSV</button>
                         <button onclick="window.openMagicExpense()" class="bg-purple-50 border border-purple-100 text-purple-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-purple-100 transition-colors flex items-center"><i class="fas fa-magic mr-1.5"></i> 极速入账</button>
                         <button onclick="window.openReceiptScanner()" class="bg-blue-50 border border-blue-100 text-blue-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-100 transition-colors flex items-center"><i class="fas fa-camera mr-1.5"></i> 识票</button>
                         <button onclick="window.addExpense()" class="bg-slate-800 text-white px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-700 transition-colors flex items-center"><i class="fas fa-plus mr-1.5"></i> 手动</button>
@@ -806,7 +824,7 @@
         };
 
         // ==========================================
-        // 模态框操作逻辑挂载 (设置/设置修改/添加编辑)
+        // 具体操作函数挂载 (CRUD)
         // ==========================================
         window.openSettings = () => {
             window.openModal("设置", "管理您的私人数据库及行程信息", [
@@ -826,16 +844,19 @@
             ], (v) => {
                 let reloadNeeded = false;
                 let dataChanged = false;
+                
                 if (v.firebase && v.firebase.trim() !== (localStorage.getItem('firebase_custom_config_v2') || '')) {
                     v.firebase.trim() === '' ? localStorage.removeItem('firebase_custom_config_v2') : localStorage.setItem('firebase_custom_config_v2', v.firebase);
                     reloadNeeded = true;
                 }
+
                 if (v.sid) {
                     const newId = v.sid.trim().toUpperCase(); const newPin = v.spin ? v.spin.trim() : '';
                     if (newId !== tripId || newPin !== tripPin) {
                         tripId = newId; tripPin = newPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); reloadNeeded = true;
                     }
                 }
+
                 if (tripData) {
                     if (v.tName && v.tName.trim() !== (tripData.tripName || '')) { tripData.tripName = v.tName.trim(); dataChanged = true; }
                     if (v.sDate && v.sDate !== (tripData.settings?.startDate || '')) {
@@ -847,32 +868,290 @@
                         tripData.settings.geminiApiKey = v.geminiKey.trim(); localStorage.setItem('gemini_api_key', v.geminiKey.trim()); dataChanged = true;
                     }
                 }
+
                 if (dataChanged) { window.saveToCloud(); if (!reloadNeeded) { unlockApp(); window.render(); } }
                 if (reloadNeeded) location.reload(); 
             });
         };
 
+        window.addShoppingItem = () => {
+            window.openModal("添加商品", "", [
+                { id: 'name', label: '商品名称', placeholder: '例如：Tamburins 墨镜' },
+                { id: 'source', label: '来源/分类', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'] },
+                { id: 'price', label: '参考价', placeholder: '例如：￥899' },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: '' },
+                { id: 'note', label: '备注', type: 'textarea', placeholder: '例如：现代百货有售...' }
+            ], (v) => {
+                if(!v.name) { alert("商品名称为必填项"); return false; }
+                if(!tripData.shoppingList) tripData.shoppingList = [];
+                tripData.shoppingList.push({ id: Date.now(), ...v, bought: false });
+                window.saveToCloud(); window.render();
+            });
+        };
+
+        window.editShoppingItem = (idx) => {
+            const item = tripData.shoppingList[idx];
+            window.openModal("编辑商品", "", [
+                { id: 'name', label: '商品名称', value: item.name },
+                { id: 'source', label: '来源/分类', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'], value: item.source },
+                { id: 'price', label: '参考价', value: item.price },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
+                { id: 'note', label: '备注', type: 'textarea', value: item.note }
+            ], (v) => {
+                if(!v.name) { alert("商品名称为必填项"); return false; }
+                Object.assign(item, v); window.saveToCloud(); window.render();
+            });
+        };
+
+        window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; window.saveToCloud(); window.render(); };
+        window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { tripData.shoppingList.splice(idx, 1); window.saveToCloud(); window.render(); }); };
+
+        window.openMagicShopping = () => {
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) { window.openModal("未配置 API Key", "智能推荐不可用", [{ id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }], () => { window.openSettings(); }); return; }
+            
+            window.openModal("✨ AI 智能种草", `结合当地特色为您推荐必买好物`, [
+                { id: 'text', type: 'textarea', placeholder: '你想买点什么？或者想送给谁？预算多少？\n例如：我想给女朋友买点具有首尔本地特色的美妆产品或者潮牌小包...' }
+            ], async (v) => {
+                if (!v.text) return false;
+                window.showAILoading("✨ AI 正在搜罗必买好物...", "正结合当地趋势提取精选商品");
+                try {
+                    const prompt = `用户请求：${v.text}\n当前旅行目的地：${tripData.settings.destination || '海外'}\n当地货币：${tripData.settings.currency}\n请作为极其专业的当地导购，推荐2到3个绝佳的具体单品。返回严格的JSON数组格式，绝不要带Markdown，直接返回：[{"name":"具体品牌及商品名称","price":"估算价格","note":"一句话推荐理由(如在哪里好买)"}]`;
+                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                    const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                    const items = await window.askGemini(payload, apiKey, model, true);
+                    
+                    items.forEach(item => { tripData.shoppingList.push({ id: Date.now() + Math.random(), name: item.name, source: '✨ AI 推荐', price: item.price, imgUrl: '', note: item.note, bought: false }); });
+                    window.saveToCloud(); window.render();
+                } catch(e) { alert("AI 推荐失败：" + e.message); } finally { window.hideAILoading(); }
+            });
+        };
+
+        window.tempReceiptData = { base64: "", items: [], payer: "", date: "" };
+
+        window.openReceiptScanner = () => {
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) {
+                window.openModal("配置 AI 大脑", "只需输入一次，自动存入云端", [{ id: 'gKey', inputType: 'password', label: 'Gemini API Key', placeholder: '在此粘贴 AIzaSy...' }, { id: 'info', type: 'info', value: 'API Key 将直接保存在当前行程的云端数据库中，拒绝重复填写。前往 aistudio.google.com 免费获取。' }], (v) => {
+                    const key = v.gKey.trim();
+                    if (key) {
+                        if (!tripData.settings) tripData.settings = {}; tripData.settings.geminiApiKey = key; localStorage.setItem('gemini_api_key', key); window.saveToCloud();
+                        const modal = document.getElementById('receipt-modal'); modal.classList.remove('hidden'); modal.classList.add('active'); window.renderReceiptUploadUI();
+                    }
+                });
+                return;
+            }
+            const modal = document.getElementById('receipt-modal'); modal.classList.remove('hidden'); modal.classList.add('active'); window.renderReceiptUploadUI();
+        };
+
+        window.closeReceiptModal = () => { const modal = document.getElementById('receipt-modal'); modal.classList.remove('active'); setTimeout(() => modal.classList.add('hidden'), 200); };
+
+        window.renderReceiptUploadUI = () => {
+            const content = document.getElementById('receipt-modal-content');
+            content.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-6">
+                    <label class="w-full max-w-[200px] aspect-square bg-white border border-slate-200 text-blue-500 rounded-[2rem] flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors shadow-sm mb-4">
+                        <i class="fas fa-camera text-4xl mb-3 text-slate-300"></i><span class="text-xs font-bold text-slate-500">点击拍照 / 上传小票</span><input type="file" accept="image/*" class="hidden" onchange="window.handleReceiptImage(event)">
+                    </label>
+                    <p class="text-[10px] text-slate-400 font-medium">支持中 / 日 / 韩 / 英文实体小票识别与自动翻译</p>
+                    <div id="receipt-preview-container" class="mt-6 w-full hidden flex-col items-center"><div class="relative w-full aspect-[3/4] bg-slate-100 rounded-2xl overflow-hidden mb-5 border border-slate-200 shadow-inner flex items-center justify-center"><img id="receipt-preview" class="max-w-full max-h-full object-contain"></div><button id="btn-analyze-receipt" onclick="window.analyzeReceipt()" class="w-full bg-blue-500 text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 shadow-md shadow-blue-200 transition-colors text-sm flex items-center justify-center">开始智能分析 <i class="fas fa-magic ml-2"></i></button></div>
+                </div>
+            `;
+            document.getElementById('receipt-modal-title').innerText = "智能小票识别"; document.getElementById('receipt-modal-subtitle').innerText = "Gemini AI Engine"; document.getElementById('receipt-modal-footer').classList.add('hidden');
+        };
+
+        window.handleReceiptImage = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas'); const MAX_WIDTH = 1200; const MAX_HEIGHT = 1200; let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+                    canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
+                    const base64Str = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    window.tempReceiptData = { base64: base64Str, items: [], payer: "", date: "" };
+                    document.getElementById('receipt-preview').src = base64Str; document.getElementById('receipt-preview-container').classList.remove('hidden'); document.getElementById('receipt-preview-container').classList.add('flex');
+                    const scrollContainer = document.getElementById('receipt-modal-content'); scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.analyzeReceipt = async () => {
+            const btn = document.getElementById('btn-analyze-receipt');
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> 正在识别提取中...`; btn.disabled = true; btn.classList.add('opacity-70', 'cursor-not-allowed');
+            const apiKey = tripData.settings.geminiApiKey || localStorage.getItem('gemini_api_key');
+            const base64Data = window.tempReceiptData.base64.split(',')[1];
+            try {
+                const payload = { contents: [{ parts: [ { text: "Analyze this receipt carefully. Extract each purchased item and calculate its ACTUAL FINAL PAID PRICE. You MUST proportionally distribute any overall taxes, service charges, or overall discounts to each individual item's price. The sum of the returned items' amounts MUST EXACTLY EQUAL the final total paid amount on the receipt. DO NOT list taxes or discounts as separate items. Translate item names to Chinese. Return ONLY a valid JSON object matching exactly this structure: {\"items\": [{\"item\": \"translated name\", \"amount\": 1500, \"category\": \"餐饮/Food\"}]}. The 'category' field must be chosen from exactly one of these strings: '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'." }, { inlineData: { mimeType: "image/jpeg", data: base64Data } } ] }], generationConfig: { responseMimeType: "application/json" } };
+                const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                const result = await window.askGemini(payload, apiKey, model, true);
+                window.tempReceiptData.items = result.items || []; window.tempReceiptData.items.forEach(i => { i.consumer = '共同'; i.note = ''; }); window.tempReceiptData.payer = window.getMembers()[0]; window.tempReceiptData.date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
+                window.renderReceiptSplitterUI();
+            } catch (err) {
+                console.error(err); btn.innerHTML = `识别失败，请重试`; btn.disabled = false; btn.classList.remove('opacity-70', 'cursor-not-allowed'); alert("识别失败: 请检查 API Key 是否正确，或稍后重试。\n" + err.message);
+            }
+        };
+
+        window.renderReceiptSplitterUI = () => {
+            const content = document.getElementById('receipt-modal-content');
+            document.getElementById('receipt-modal-title').innerText = "账单智能切分"; document.getElementById('receipt-modal-subtitle').innerText = "请仔细校对并分配使用人"; document.getElementById('receipt-modal-footer').classList.remove('hidden');
+            const members = window.getMembers(); const payerOptions = members.map(m => `<option value="${m}" ${window.tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join(''); const locCur = tripData.settings?.currency || 'KRW';
+            let html = `
+                <div class="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] p-3 rounded-2xl mb-4 font-medium flex gap-2"><i class="fas fa-info-circle mt-0.5"></i><span>AI 已尝试自动分摊税费与折扣。如有偏差，请直接在下方输入框中点击校对修改。</span></div>
+                <div class="bg-white p-4 rounded-2xl mb-4 border border-slate-200 shadow-sm space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">全单支付人</label><select id="receipt-global-payer" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" onchange="window.updateTempPayer(this.value)">${payerOptions}</select></div>
+                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">付款币种</label><select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all"><option value="${locCur}" selected>${locCur} 当地货币</option><option value="CNY">CNY 人民币</option></select></div>
+                    </div>
+                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">小票整单标签 (如: 松本清药妆)</label><input type="text" id="receipt-global-label" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" placeholder="可选填整单标签..."></div>
+                </div>
+                <div class="space-y-3 pb-2" id="receipt-items-container">
+            `;
+            if (window.tempReceiptData.items.length === 0) {
+                html += `<p class="text-xs text-slate-400 text-center py-4">未识别到商品项目</p>`;
+            } else {
+                window.tempReceiptData.items.forEach((item, idx) => {
+                    const consumerOptions = ['共同', ...members].map(m => `<option value="${m}" ${item.consumer === m ? 'selected' : ''}>${m}</option>`).join('');
+                    html += `
+                        <div class="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm relative group transition-all hover:border-blue-300">
+                            <button onclick="window.removeReceiptItem(${idx})" class="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-lg text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:text-red-500 shadow-sm flex items-center justify-center z-10"><i class="fas fa-times"></i></button>
+                            <div class="flex gap-2 mb-2.5"><input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}"><div class="relative w-28 flex-shrink-0"><span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(locCur)}</span><input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}"></div></div>
+                            <div class="flex gap-2 mb-2"><select id="ri-cat-${idx}" class="flex-1 p-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-500 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="餐饮/Food" ${item.category.includes('餐饮')?'selected':''}>🍔 餐饮/Food</option><option value="购物/Shopping" ${item.category.includes('购物')?'selected':''}>🛍️ 购物/Shopping</option><option value="交通/Transport" ${item.category.includes('交通')?'selected':''}>🚆 交通/Transport</option><option value="住宿/Hotel" ${item.category.includes('住宿')?'selected':''}>🏨 住宿/Hotel</option><option value="娱乐/Entertainment" ${item.category.includes('娱乐')?'selected':''}>🎟️ 娱乐/Ent.</option><option value="其他/Other" ${item.category.includes('其他')?'selected':''}>📦 其他/Other</option></select><select id="ri-con-${idx}" class="flex-1 p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all">${consumerOptions}</select></div>
+                            <div><input id="ri-note-${idx}" type="text" class="w-full p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="单品附加备注 (选填)..." value="${item.note || ''}"></div>
+                        </div>
+                    `;
+                });
+            }
+            html += `</div>`; content.innerHTML = html;
+            document.getElementById('receipt-modal-confirm-btn').onclick = () => {
+                const currency = document.getElementById('receipt-global-currency').value; const receiptLabel = document.getElementById('receipt-global-label').value.trim(); const payer = window.tempReceiptData.payer; const date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}); const groupId = 'grp_' + Date.now();
+                window.tempReceiptData.items.forEach((item, idx) => { const nameEl = document.getElementById(`ri-name-${idx}`); const amtEl = document.getElementById(`ri-amt-${idx}`); const catEl = document.getElementById(`ri-cat-${idx}`); const conEl = document.getElementById(`ri-con-${idx}`); const noteEl = document.getElementById(`ri-note-${idx}`); if (nameEl) item.item = nameEl.value; if (amtEl) item.amount = parseFloat(amtEl.value) || 0; if (catEl) item.category = catEl.value; if (conEl) item.consumer = conEl.value; if (noteEl) item.note = noteEl.value; });
+                let totalLocal = 0; window.tempReceiptData.items.forEach(item => { if (!item.item || !item.amount) return; totalLocal += parseFloat(item.amount); });
+                let addedCount = 0;
+                window.tempReceiptData.items.forEach(item => {
+                    if (!item.item || !item.amount) return;
+                    tripData.expenses.push({ id: Date.now() + Math.random(), groupId: groupId, groupTotalJpy: totalLocal, receiptLabel: receiptLabel, date: date, item: item.item, category: item.category || '其他/Other', amount: parseFloat(item.amount), currency: currency, actualCnyAmount: null, exchangeRate: window.getEstExchangeRate(currency), payer: payer, consumers: item.consumer || '共同', note: item.note || '' });
+                    addedCount++;
+                });
+                if (addedCount > 0) { window.saveToCloud(); window.render(); }
+                window.closeReceiptModal();
+            };
+        };
+
+        window.updateTempPayer = (val) => { window.tempReceiptData.payer = val; };
+        window.removeReceiptItem = (idx) => { window.tempReceiptData.items.splice(idx, 1); window.renderReceiptSplitterUI(); };
+
+        window.openMagicExpense = () => { 
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) { alert("极速入账需要配置 Gemini API Key"); return; }
+            const locCur = tripData.settings?.currency || 'KRW';
+            window.openModal("✨ 一句话极速记账", "自然语言输入，AI瞬间拆解入账", [
+                { id: 'text', type: 'textarea', placeholder: '例如：打车花了15000韩币，张三付的，李四一起...\n或者：刚才买了两瓶水，一共 400 JPY，算我的' }
+            ], async (v) => { 
+                if (!v.text) return false; 
+                window.showAILoading("✨ AI 正在拆解账单金额...");
+                try {
+                    const membersStr = window.getMembers().join(', ');
+                    const prompt = `你是专业的账单解析器。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 当前成员: [${membersStr}]。请解析用户描述并提取: item(项目), amount(数值), currency(货币代码), payer(支付人，从成员列表选), consumers(使用人，从成员列表选 或 '共同'), category(类别)。如果未指明支付人，默认填${window.getMembers()[0]}。用户描述：${v.text} 返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码","payer":"付款人名字","consumers":"使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
+                    const payload = { contents: [{ parts: [{ text: `用户输入：${v.text}\n${prompt}` }] }] };
+                    const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                    const result = await window.askGemini(payload, apiKey, model, true);
+                    tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: result.item, category: result.category || '其他/Other', amount: parseFloat(result.amount) || 0, currency: result.currency || tripData.settings.currency, actualCnyAmount: null, exchangeRate: window.getEstExchangeRate(result.currency || tripData.settings.currency), payer: result.payer, consumers: result.consumers, note: '✨ AI 提取' });
+                    window.saveToCloud(); window.render();
+                } catch(e) { alert("AI 解析失败：" + e.message); } finally { window.hideAILoading(); }
+            }); 
+        };
+
+        window.updateItemNote = (idx, text) => { tripData.days.find(d => d.id === tripData.currentDay).events[idx].note = text; window.saveToCloud(); };
+        
+        window.editReview = (idx) => { 
+            const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; 
+            window.openModal("游后点评", "", [
+                { id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, 
+                { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }
+            ], (v) => { 
+                ev.review_rating = parseInt(v.rating); 
+                ev.review_text = v.text; 
+                window.saveToCloud(); window.render(); 
+            }); 
+        };
+        
         window.addGenericEvent = () => { 
             window.openModal("添加行程", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
                 { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
                 { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
-                { id: 'title', label: '标题' }, 
-                { id: 'desc', label: '描述', type: 'textarea', placeholder: '详细活动说明、注意事项...' }, 
-                { id: 'link', label: '地图链接 (可选)' }
+                { id: 'title', label: '标题' }, { id: 'desc', label: '描述', type: 'textarea', placeholder: '详细描述...' }, { id: 'link', label: '地图链接 (可选)' }
             ], (v) => { 
                 const day = tripData.days.find(d => d.id === tripData.currentDay); 
                 day.events.push({ ...v, note: "" }); 
                 day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
             }); 
         };
+        
+        window.addMealEvent = () => { 
+            window.openModal("添加餐饮", "", [
+                { id: 'time', label: '时间', value: '12:00' }, 
+                { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
+                { id: 't1', label: '餐厅名称', placeholder: '必填' }, 
+                { id: 'l1', label: '餐厅链接', placeholder: '选填' }, 
+                { id: 'p1', label: '人均参考价', placeholder: '￥' }
+            ], (v) => { 
+                if(!v.t1) { alert("请填写餐厅名称"); return false; } 
+                const day = tripData.days.find(d => d.id === tripData.currentDay); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); 
+                day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
+            }); 
+        };
+        
+        window.addExpense = () => { 
+            const locCur = tripData.settings?.currency || 'KRW';
+            window.openModal("新增记账", "", [
+                { id: 'item', label: '消费项目' }, 
+                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
+                { id: 'amount', label: '原币金额', inputType: 'number' }, 
+                { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ] }, 
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] }
+            ], (v) => { 
+                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
+                tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: v.item, category: v.category, amount: parseFloat(v.amount), currency: v.currency, exchangeRate: window.getEstExchangeRate(v.currency), payer: v.payer, consumers: v.consumers }); 
+                window.saveToCloud(); window.render(); 
+            }); 
+        };
+
+        window.editExpense = (idx) => { 
+            const ev = tripData.expenses[idx]; const locCur = tripData.settings?.currency || 'KRW';
+            window.openModal("编辑账目", "", [
+                { id: 'item', label: '消费项目', value: ev.item }, 
+                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category }, 
+                { id: 'amount', label: '原币金额', inputType: 'number', value: ev.amount }, 
+                { id: 'currency', label: '币种', type: 'select', options: [{value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'}], value: ev.currency }, 
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer }, 
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
+            ], (v) => { 
+                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
+                ev.item = v.item; ev.category = v.category; ev.amount = parseFloat(v.amount); ev.currency = v.currency; ev.payer = v.payer; ev.consumers = v.consumers; window.saveToCloud(); window.render(); 
+            }); 
+        };
+
+        window.deleteExpense = (idx) => { window.openModal("删除账目", "", [{ id: 'i', label: '确认', type: 'info', value: '确定删除此条记账记录吗？' }], () => { tripData.expenses.splice(idx, 1); window.saveToCloud(); window.render(); }); };
 
         window.editEvent = (idx) => { 
             const day = tripData.days.find(d => d.id === tripData.currentDay); const ev = day.events[idx]; 
             if(ev.type === 'meal_options') {
                 const firstOption = ev.options && ev.options.length > 0 ? ev.options[0] : { title: '', link: '', price: '', dishes: '' };
                 window.openModal("编辑餐饮", "修改首选餐厅", [
-                    { id: 'time', label: '时间', value: ev.time }, { id: 'title', label: '餐厅名', value: firstOption.title }, { id: 'link', label: '链接', value: firstOption.link }, { id: 'price', label: '人均', value: firstOption.price }, { id: 'dishes', label: '推荐菜', value: firstOption.dishes }
+                    { id: 'time', label: '时间', value: ev.time }, 
+                    { id: 'title', label: '餐厅名', value: firstOption.title }, 
+                    { id: 'link', label: '链接', value: firstOption.link }, 
+                    { id: 'price', label: '人均', value: firstOption.price }, 
+                    { id: 'dishes', label: '推荐菜', value: firstOption.dishes }
                 ], (v) => { 
                     ev.time = v.time; if (!ev.options || ev.options.length === 0) ev.options = [{}]; ev.options[0].title = v.title; ev.options[0].link = v.link; ev.options[0].price = v.price; ev.options[0].dishes = v.dishes; day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
                 });
@@ -887,37 +1166,6 @@
             }
         };
 
-        window.addMealEvent = () => { 
-            window.openModal("添加餐饮", "", [
-                { id: 'time', label: '时间', value: '12:00' }, { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, { id: 't1', label: '餐厅名称', placeholder: '必填' }, { id: 'l1', label: '餐厅链接', placeholder: '选填' }, { id: 'p1', label: '人均参考价', placeholder: '￥' }
-            ], (v) => { 
-                if(!v.t1) { alert("请填写餐厅名称"); return false; } 
-                const day = tripData.days.find(d => d.id === tripData.currentDay); day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
-            }); 
-        };
-
-        window.addExpense = () => { 
-            const locCur = tripData.settings?.currency || 'KRW';
-            window.openModal("新增记账", "", [
-                { id: 'item', label: '消费项目' }, { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, { id: 'amount', label: '原币金额', inputType: 'number' }, { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ] }, { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] }
-            ], (v) => { 
-                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
-                tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: v.item, category: v.category, amount: parseFloat(v.amount), currency: v.currency, exchangeRate: window.getEstExchangeRate(v.currency), payer: v.payer, consumers: v.consumers }); 
-                window.saveToCloud(); window.render(); 
-            }); 
-        };
-
-        window.editExpense = (idx) => { 
-            const ev = tripData.expenses[idx]; const locCur = tripData.settings?.currency || 'KRW';
-            window.openModal("编辑账目", "", [
-                { id: 'item', label: '消费项目', value: ev.item }, { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category }, { id: 'amount', label: '原币金额', inputType: 'number', value: ev.amount }, { id: 'currency', label: '币种', type: 'select', options: [{value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'}], value: ev.currency }, { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer }, { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
-            ], (v) => { 
-                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
-                ev.item = v.item; ev.category = v.category; ev.amount = parseFloat(v.amount); ev.currency = v.currency; ev.payer = v.payer; ev.consumers = v.consumers; window.saveToCloud(); window.render(); 
-            }); 
-        };
-
-        window.deleteExpense = (idx) => { window.openModal("删除账目", "", [{ id: 'i', label: '确认', type: 'info', value: '确定删除此条记账记录吗？' }], () => { tripData.expenses.splice(idx, 1); window.saveToCloud(); window.render(); }); };
         window.requestDeleteItem = (idx) => { window.openModal("确认删除", "", [{ id: 'i', type: 'info', label: '警告', value: '确定删除此项行程吗？' }], () => { tripData.days.find(d => d.id === tripData.currentDay).events.splice(idx, 1); window.saveToCloud(); window.render(); }); };
         window.addNewDay = () => { const newId = tripData.days.length > 0 ? Math.max(...tripData.days.map(d => d.id)) + 1 : 1; const dayIndex = tripData.days.length; const newDateStr = window.formatDateFromStart(tripData?.settings?.startDate, dayIndex); tripData.days.push({ id: newId, date: newDateStr, title: `新增日程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" }); tripData.currentDay = newId; window.saveToCloud(); window.render(); };
         window.editDayInfo = () => { const day = tripData.days.find(d => d.id === tripData.currentDay); window.openModal("编辑日程信息", "自定义大标题", [{ id: 'title', label: '当日主题大标题', value: day.title }], (v) => { day.title = v.title; window.saveToCloud(); window.render(); }); };
