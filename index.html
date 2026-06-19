@@ -4,38 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WanderSync • Secure Entry</title>
-    
-    <!-- 🚨 绝对防御：拦截一切导致白屏的致命错误并提供重置入口 🚨 -->
-    <script>
-        window.onerror = function(message, source, lineno, colno, error) {
-            document.body.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#f8fafc;padding:20px;font-family:sans-serif;text-align:center;">
-                    <div style="width:60px;height:60px;background:#fee2e2;color:#ef4444;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:bold;margin-bottom:20px;">!</div>
-                    <h2 style="color:#1e293b;margin:0 0 10px 0;font-size:20px;">系统遭遇致命崩溃</h2>
-                    <p style="color:#64748b;font-size:12px;background:#f1f5f9;padding:10px;border-radius:8px;word-break:break-all;max-width:100%;">${message}</p>
-                    <p style="color:#94a3b8;font-size:11px;margin-top:10px;">这通常是由于浏览器残留的旧版本脏数据引起的。</p>
-                    <button onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload();" style="margin-top:30px;padding:15px 30px;background:#ef4444;color:white;border:none;border-radius:12px;font-size:14px;font-weight:bold;box-shadow:0 4px 6px -1px rgba(239, 68, 68, 0.3);cursor:pointer;width:100%;">
-                        清除毒化缓存并重启
-                    </button>
-                </div>
-            `;
-            return true; // 阻止错误向上冒泡
-        };
-        window.addEventListener('unhandledrejection', function(event) {
-            window.onerror("Unhandled Promise Rejection: " + event.reason, window.location.href, 0, 0, event.reason);
-        });
-    </script>
-
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Poppins:wght@500;700;900&display=swap');
         
-        :root { --primary: #475569; --secondary: #64748b; --accent: #3b82f6; --bg: #f8fafc; --surface: #ffffff; --text-main: #1e293b; --text-sec: #64748b; --border: #e2e8f0; }
+        :root {
+            --primary: #475569;
+            --secondary: #64748b;
+            --accent: #3b82f6;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text-main: #1e293b;
+            --text-sec: #64748b;
+            --border: #e2e8f0;
+        }
+
         body { font-family: 'Noto Sans SC', sans-serif; background-color: var(--bg); color: var(--text-main); -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
         .font-poppins { font-family: 'Poppins', sans-serif; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -108,18 +95,46 @@
                 </div>
                 <div class="space-y-4 overflow-y-auto px-1 pb-4 flex-1 overscroll-touch hide-scrollbar relative">
                     <div class="grid grid-cols-2 gap-3">
-                        <div class="col-span-2"><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label><input id="init-trip-name" type="text" placeholder="例如：首尔暴走 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">目的地</label><input id="init-dest" type="text" placeholder="例: 韩国首尔" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">当地货币</label><select id="init-currency" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"><option value="KRW">KRW 韩国韩元</option><option value="JPY">JPY 日本日元</option><option value="USD">USD 美元</option><option value="EUR">EUR 欧元</option><option value="GBP">GBP 英镑</option><option value="THB">THB 泰铢</option><option value="AUD">AUD 澳元</option><option value="CNY">CNY 人民币</option></select></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">起始日期 (可选)</label><input id="init-start-date" type="date" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label><input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">地图偏好</label><select id="init-map" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"><option value="google">Google Maps</option><option value="naver">Naver Map (韩国适用)</option></select></div>
-                        <div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员 (逗号分隔)</label><input id="init-members" type="text" placeholder="例：张三, 李四" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"></div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">行程名称</label>
+                            <input id="init-trip-name" type="text" placeholder="例如：首尔暴走 2026" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">目的地</label>
+                            <input id="init-dest" type="text" placeholder="例: 韩国首尔" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">当地货币</label>
+                            <select id="init-currency" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="KRW">KRW 韩国韩元</option><option value="JPY">JPY 日本日元</option><option value="USD">USD 美元</option><option value="EUR">EUR 欧元</option><option value="GBP">GBP 英镑</option><option value="THB">THB 泰铢</option><option value="AUD">AUD 澳元</option><option value="CNY">CNY 人民币</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">起始日期 (可选)</label>
+                            <input id="init-start-date" type="date" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">旅行总天数</label>
+                            <input id="init-days" type="number" value="5" min="1" max="30" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">地图偏好</label>
+                            <select id="init-map" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="google">Google Maps</option><option value="naver">Naver Map (韩国适用)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">成员 (逗号分隔)</label>
+                            <input id="init-members" type="text" placeholder="例：张三, 李四" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
                     </div>
                     <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 mt-2">
                         <div class="flex items-center gap-2 mb-3"><i class="fas fa-magic text-blue-500"></i><span class="text-xs font-bold text-blue-800">Gemini AI 智能规划 (可选)</span></div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">Gemini API Key</label>
-                        <div class="flex gap-2 mb-3"><input id="init-ai-key" type="password" placeholder="输入API Key..." class="flex-1 p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"><button type="button" onclick="window.fetchGeminiModels('init-ai-key', 'init-ai-model')" class="px-3 bg-blue-500 text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition shadow-sm whitespace-nowrap">获取模型</button></div>
+                        <div class="flex gap-2 mb-3">
+                            <input id="init-ai-key" type="password" placeholder="输入API Key..." class="flex-1 p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            <button type="button" onclick="window.fetchGeminiModels('init-ai-key', 'init-ai-model')" class="px-3 bg-blue-500 text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition shadow-sm whitespace-nowrap">获取模型</button>
+                        </div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">选择AI模型</label>
                         <select id="init-ai-model" class="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-3"><option value="gemini-3.5-flash">gemini-3.5-flash (默认)</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">怎么玩？(描述偏好)</label>
@@ -132,6 +147,10 @@
                         <button onclick="window.cancelInitWorkspace()" class="flex-1 bg-white border border-slate-200 text-slate-500 font-bold py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-sm">取消返回</button>
                         <button onclick="window.confirmInitWorkspace(false)" class="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors text-sm shadow-md">手动建立空行程</button>
                     </div>
+                    <label class="w-full bg-indigo-50 border border-indigo-200 text-indigo-600 font-bold py-3 rounded-xl hover:bg-indigo-100 transition-colors text-xs flex items-center justify-center cursor-pointer shadow-sm mt-1">
+                        <i class="fas fa-file-import mr-1.5"></i> 导入已有 JSON 备份创建新行程
+                        <input type="file" accept=".json" class="hidden" onchange="window.handleJsonBackupUpload(event)">
+                    </label>
                 </div>
             </div>
 
@@ -200,7 +219,6 @@
                             <div class="flex items-center gap-2 mt-0.5"><span id="sync-status" class="sync-badge sync-offline">离线模式</span><span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span></div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
-                            <!-- 💡 登出按钮调用 window.logoutTrip() 💡 -->
                             <button onclick="window.logoutTrip()" class="bg-rose-50 border border-rose-100 hover:bg-rose-100 text-rose-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="退出/新建行程"><i class="fas fa-sign-out-alt"></i></button>
                             <button onclick="window.openSettings()" class="bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-500 w-9 h-9 md:w-10 md:h-10 rounded-[1rem] flex items-center justify-center transition-all shadow-sm" title="全局设置"><i class="fas fa-sliders-h"></i></button>
                         </div>
@@ -233,6 +251,7 @@
         window.sanitizeTripData = (data) => {
             if (!data || typeof data !== 'object') return null;
             try {
+                // 1. 结构级防空指针与类型对齐
                 data.settings = data.settings || {};
                 data.settings.currency = data.settings.currency || "JPY";
                 data.settings.mapProvider = data.settings.mapProvider || "google";
@@ -241,20 +260,39 @@
                 data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
                 data.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : [];
                 
+                // 2. 致命防线：重建与修复所有节点
                 if (!Array.isArray(data.days) || data.days.length === 0) {
                     console.warn("自愈机制触发: 重建被损毁的 Days 数组");
                     data.days = [{ id: 1, date: "Day 1", title: "行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }];
                 } else {
                     data.days = data.days.map(d => ({
                         id: d.id || Math.floor(Math.random() * 10000),
-                        date: d.date || "", title: d.title || "", hotelName: d.hotelName || "", hotelLink: d.hotelLink || "", hotelNote: d.hotelNote || "",
-                        events: Array.isArray(d.events) ? d.events.map(ev => ({ ...ev, time: ev.time || "00:00", title: ev.title || "未命名", type: ev.type || "activity", label: ev.label || "共同", options: Array.isArray(ev.options) ? ev.options : [] })) : []
+                        date: d.date || "",
+                        title: d.title || "",
+                        hotelName: d.hotelName || "",
+                        hotelLink: d.hotelLink || "",
+                        hotelNote: d.hotelNote || "",
+                        events: Array.isArray(d.events) ? d.events.map(ev => ({
+                            ...ev,
+                            time: ev.time || "00:00",
+                            title: ev.title || "未命名",
+                            type: ev.type || "activity",
+                            label: ev.label || "共同",
+                            options: Array.isArray(ev.options) ? ev.options : []
+                        })) : []
                     }));
                 }
 
+                // 3. 终极防御：严格对齐 currentDay 类型，防止 JS === 判断崩溃导致白屏
                 let parsedCurrentDay = parseInt(data.currentDay);
                 let dayExists = data.days.find(d => String(d.id) === String(parsedCurrentDay));
-                data.currentDay = dayExists ? dayExists.id : data.days[0].id;
+                if (!dayExists) {
+                    console.warn("自愈机制触发: 修复游离的 currentDay 指针");
+                    data.currentDay = data.days[0].id;
+                } else {
+                    data.currentDay = dayExists.id; 
+                }
+
                 data.tripName = data.tripName || "WanderSync";
                 return data;
             } catch (e) {
@@ -279,15 +317,17 @@
         let syncUnsubscribe = null; 
 
         window.getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        window.getTripDocRef = (id) => { return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id); };
+        
+        window.getTripDocRef = (id) => { 
+            return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id); 
+        };
 
         window.saveToCloud = async () => {
             if (!tripId || !tripData) return;
             localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
-            
-            // 🚨 破解死锁：移除 || !user 的强制校验，直接依赖 Firestore 宽容规则放行 🚨
-            if (!isCloudConfigured) return;
+
+            if (!isCloudConfigured || !user) return;
             try { await setDoc(window.getTripDocRef(tripId), tripData); } catch (err) { console.error("Save Error:", err); }
         };
 
@@ -298,7 +338,8 @@
                     try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
                     isBYOD = true;
                 } else if (typeof __firebase_config !== 'undefined') {
-                    config = JSON.parse(__firebase_config); isBYOD = false;
+                    config = JSON.parse(__firebase_config);
+                    isBYOD = false;
                 } else { return false; }
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
                 if (getApps().length === 0) app = initializeApp(config); else app = getApp();
@@ -321,8 +362,7 @@
         window.skipConfig = () => { isCloudConfigured = false; document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); };
 
         window.attemptLogin = () => {
-            const idInput = document.getElementById('login-id').value.trim().toUpperCase() || tripId; 
-            const pinInput = document.getElementById('login-pin').value.trim() || tripPin;
+            const idInput = document.getElementById('login-id').value.trim().toUpperCase(); const pinInput = document.getElementById('login-pin').value.trim();
             if (!idInput) { document.getElementById('login-error').innerText = "请输入同步码"; return; }
             tripId = idInput; tripPin = pinInput; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
             if (isCloudConfigured) { document.getElementById('login-btn').innerText = "检查中..."; startSync(tripId, tripPin); } 
@@ -336,21 +376,10 @@
 
         const unlockApp = () => {
             document.getElementById('login-screen').classList.add('hidden'); document.getElementById('init-screen').classList.add('hidden'); document.getElementById('app-wrap').classList.remove('hidden');
-            document.title = ((tripData && tripData.tripName) || "WanderSync") + " • Workspace";
+            document.title = (tripData?.tripName || "WanderSync") + " • Workspace";
             const badge = document.getElementById('trip-name-badge');
-            if (tripData && tripData.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+            if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
             window.render();
-        };
-
-        // 🚨 修复登出函数，将其挂载到全局作用域 🚨
-        window.logoutTrip = () => {
-            window.openModal("退出当前行程", "切换行程或创建新行程", [
-                { id: 'i', type: 'info', label: '提示', value: '您的数据已安全保存在云端或本地缓存中。' }
-            ], () => {
-                localStorage.removeItem('trip_sync_id');
-                localStorage.removeItem('trip_sync_pin');
-                window.location.reload();
-            });
         };
 
         window.deleteEntireTrip = async () => {
@@ -359,6 +388,15 @@
                 localStorage.removeItem('trip_sync_id'); localStorage.removeItem('trip_sync_pin'); localStorage.removeItem(`trip_local_${tripId}`); localStorage.removeItem('trip_local_finance_v8');
                 location.reload();
             }
+        };
+        window.logoutTrip = () => {
+            if (syncUnsubscribe) {
+                syncUnsubscribe();
+                syncUnsubscribe = null;
+            }
+            localStorage.removeItem('trip_sync_id');
+            localStorage.removeItem('trip_sync_pin');
+            location.reload();
         };
 
         window.cancelInitWorkspace = () => { document.getElementById('init-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('login-btn').innerText = "验证并进入"; pendingNewId = null; pendingNewPin = null; };
@@ -382,6 +420,42 @@
             let newDays = []; for(let i=1; i<=dCount; i++) newDays.push({ id: i, date: window.formatDateFromStart(sDate, i - 1), title: `第 ${i} 天行程`, events: [], hotelName: "", hotelLink: "", hotelNote: "" });
             tripData = { isGeneric: true, pin: pendingNewPin, tripName: tName, settings: { members: membersList.length > 0 ? membersList : ['我'], startDate: sDate, geminiApiKey: apiKey, geminiModel: aiModel, destination: dest, currency: currency, mapProvider: mapPref }, currentDay: 1, expenses: [], shoppingList: [], days: newDays };
             tripId = pendingNewId; tripPin = pendingNewPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); window.saveToCloud(); unlockApp();
+        };
+
+        window.handleJsonBackupUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const rawData = JSON.parse(e.target.result);
+                    const sanitized = window.sanitizeTripData(rawData);
+                    if (!sanitized) {
+                        alert("解析失败：备份文件损坏或结构不完整");
+                        return;
+                    }
+                    const finalPin = pendingNewPin || sanitized.pin || "";
+                    sanitized.pin = finalPin;
+                    if (sanitized.settings && sanitized.settings.geminiApiKey) {
+                        localStorage.setItem('gemini_api_key', sanitized.settings.geminiApiKey);
+                    }
+                    tripData = sanitized;
+                    tripId = pendingNewId;
+                    tripPin = finalPin;
+                    localStorage.setItem('trip_sync_id', tripId);
+                    localStorage.setItem('trip_sync_pin', tripPin);
+                    await window.saveToCloud();
+                    document.getElementById('init-screen').classList.add('hidden');
+                    unlockApp();
+                    
+                    alert(`导入成功！新行程已成功部署到云端同步码: ${tripId}`);
+                } catch (err) {
+                    console.error("JSON 导入错误:", err);
+                    alert("导入失败：文件读取错误或并非标准的 JSON 备份格式。");
+                }
+            };
+            reader.readAsText(file);
         };
 
         window.renderAiPreview = (days) => {
@@ -431,8 +505,7 @@
         };
 
         const startSync = (testId, testPin) => {
-            // 🚨 破解死锁：移除 || !user 的强制校验，无视 Auth 状态强行穿透拉取数据 🚨
-            if (!isCloudConfigured) { loadLocalFallback(); return; } 
+            if (!isCloudConfigured || !user) { loadLocalFallback(); return; } 
             if (syncUnsubscribe) syncUnsubscribe(); 
             const reqId = testId || tripId; const reqPin = testPin !== undefined ? testPin : tripPin;
             
@@ -482,7 +555,7 @@
                 });
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
-                const link = document.createElement("a"); link.href = url; link.download = ((tripData && tripData.tripName) || "WanderSync") + "_财务账单.csv";
+                const link = document.createElement("a"); link.href = url; link.download = (tripData.tripName || "WanderSync") + "_财务账单.csv";
                 document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
             } catch(err) { console.error("CSV导出失败:", err); alert("CSV导出异常：" + err.message); }
         };
@@ -491,7 +564,7 @@
             try {
                 if (!tripData || !tripData.days || tripData.days.length === 0) { alert("暂无行程数据可打印。"); return; }
                 const printArea = document.getElementById('print-area');
-                let html = `<div class="text-center mb-10 border-b-4 border-slate-800 pb-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight font-poppins">${(tripData && tripData.tripName) || "WanderSync 行程计划"}</h1><p class="text-slate-500 mt-2 tracking-widest uppercase font-bold">完整行程总览</p></div>`;
+                let html = `<div class="text-center mb-10 border-b-4 border-slate-800 pb-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight font-poppins">${tripData.tripName || "WanderSync 行程计划"}</h1><p class="text-slate-500 mt-2 tracking-widest uppercase font-bold">完整行程总览</p></div>`;
                 
                 tripData.days.forEach(day => {
                     let dailyHotelText = day.hotelName || "未设置住宿";
@@ -513,14 +586,14 @@
                 });
                 
                 printArea.innerHTML = html;
-                setTimeout(() => { try { document.title = ((tripData && tripData.tripName) || 'WanderSync') + "_行程单"; window.print(); document.title = "WanderSync • Secure Entry"; } catch (err) { alert('当前环境拦截了系统打印功能'); } }, 300);
+                setTimeout(() => { try { document.title = (tripData.tripName || 'WanderSync') + "_行程单"; window.print(); document.title = "WanderSync • Secure Entry"; } catch (err) { alert('当前环境拦截了系统打印功能'); } }, 300);
             } catch(err) { console.error("PDF导出失败:", err); alert("PDF导出异常：" + err.message); }
         };
 
         window.exportItineraryJSON = () => {
             if (!tripData) return;
             const url = URL.createObjectURL(new Blob([JSON.stringify(tripData, null, 2)], { type: "application/json;charset=utf-8;" }));
-            const link = document.createElement("a"); link.href = url; link.download = ((tripData && tripData.tripName) || "WanderSync") + "_备份数据.json";
+            const link = document.createElement("a"); link.href = url; link.download = (tripData.tripName || "WanderSync") + "_备份数据.json";
             document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
         };
 
@@ -617,7 +690,10 @@
             main.innerHTML = `
                 <div class="flex justify-between items-center px-1 mb-4">
                     <div><h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">行程安排</h3><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">时间轴总览</p></div>
-                    <div class="flex gap-2"><button onclick="window.exportItineraryPDF()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center"><i class="fas fa-file-pdf mr-1.5"></i> 导出 PDF</button></div>
+                    <div class="flex gap-2">
+                        <button onclick="window.exportItineraryPDF()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center"><i class="fas fa-file-pdf mr-1.5"></i> 导出 PDF</button>
+                        <button onclick="window.exportItineraryJSON()" class="bg-white border border-slate-200 text-slate-600 px-3.5 py-2 rounded-2xl text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center"><i class="fas fa-code mr-1.5"></i> 导出 JSON</button>
+                    </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm col-span-1 md:col-span-2 relative overflow-hidden">
@@ -1149,15 +1225,51 @@
         window.setDayHotel = () => { const day = tripData.days.find(d => d.id === tripData.currentDay); window.openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [{ id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：新罗酒店' }, { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: '地图链接' }, { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }], (v) => { day.hotelName = v.t; day.hotelLink = v.l; day.hotelNote = v.n; window.saveToCloud(); window.render(); }); };
 
         const checkAuthAndProceed = async () => {
-            if (!isCloudConfigured) { document.getElementById('login-screen').classList.remove('hidden'); return; }
+            // 1. 如果没有配置云端，且本地有缓存，直接进入本地脱机模式；否则显示登录界面
+            if (!isCloudConfigured) { 
+                if (tripId) {
+                    loadLocalFallback();
+                } else {
+                    document.getElementById('login-screen').classList.remove('hidden'); 
+                }
+                return; 
+            }
+            
             let authResolved = false;
-            onAuthStateChanged(auth, (u) => { user = u; if (!authResolved) { authResolved = true; if (tripId) { window.attemptLogin(); } else { document.getElementById('login-screen').classList.remove('hidden'); } } });
+            
+            // 2. 监听 Firebase 登录状态
+            onAuthStateChanged(auth, (u) => { 
+                user = u; 
+                if (!authResolved) { 
+                    authResolved = true; 
+                    if (tripId) { 
+                        // ✅ 关键修复：不再调用 window.attemptLogin()
+                        // 而是直接使用从 LocalStorage 中读取到的 tripId 和 tripPin 变量，避免读取空的输入框
+                        startSync(tripId, tripPin); 
+                    } else { 
+                        document.getElementById('login-screen').classList.remove('hidden'); 
+                    } 
+                } 
+            });
+            
+            // 3. 匿名登录/自定义 Token 登录
             if (!auth.currentUser) {
                 try {
-                    if (!isBYOD && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { await signInWithCustomToken(auth, __initial_auth_token); } else { await signInAnonymously(auth); }
+                    if (!isBYOD && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { 
+                        await signInWithCustomToken(auth, __initial_auth_token); 
+                    } else { 
+                        await signInAnonymously(auth); 
+                    }
                 } catch (e) {
                     console.warn("鉴权失败，将尝试强制放行 (依赖 Firestore Rules 兜底):", e.message);
-                    if (!authResolved) { authResolved = true; if (tripId) window.attemptLogin(); else document.getElementById('login-screen').classList.remove('hidden'); }
+                    if (!authResolved) { 
+                        authResolved = true; 
+                        if (tripId) {
+                            loadLocalFallback(); 
+                        } else {
+                            document.getElementById('login-screen').classList.remove('hidden');
+                        }
+                    }
                 }
             }
         };
