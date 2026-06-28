@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WanderSync • Secure Entry</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./tailwind.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
@@ -237,7 +237,6 @@
         </footer>
     </div>
 
-    <!-- Print Area -->
     <div id="print-area" class="hidden w-full max-w-4xl mx-auto text-black p-4 md:p-8"></div>
 
     <script type="module">
@@ -245,13 +244,9 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // ==========================================
-        // 🚨 脏数据清洗与自愈引擎 (Deep Sanitizer) 🚨
-        // ==========================================
         window.sanitizeTripData = (data) => {
             if (!data || typeof data !== 'object') return null;
             try {
-                // 1. 结构级防空指针与类型对齐
                 data.settings = data.settings || {};
                 data.settings.currency = data.settings.currency || "JPY";
                 data.settings.mapProvider = data.settings.mapProvider || "google";
@@ -260,7 +255,6 @@
                 data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
                 data.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : [];
                 
-                // 2. 致命防线：重建与修复所有节点
                 if (!Array.isArray(data.days) || data.days.length === 0) {
                     console.warn("自愈机制触发: 重建被损毁的 Days 数组");
                     data.days = [{ id: 1, date: "Day 1", title: "行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }];
@@ -283,7 +277,6 @@
                     }));
                 }
 
-                // 3. 终极防御：严格对齐 currentDay 类型，防止 JS === 判断崩溃导致白屏
                 let parsedCurrentDay = parseInt(data.currentDay);
                 let dayExists = data.days.find(d => String(d.id) === String(parsedCurrentDay));
                 if (!dayExists) {
@@ -301,9 +294,6 @@
             }
         };
 
-        // ==========================================
-        // 核心基础设施挂载
-        // ==========================================
         let app, auth, db;
         let isCloudConfigured = false;
         let isBYOD = false; 
@@ -398,6 +388,7 @@
             localStorage.removeItem('trip_sync_pin');
             location.reload();
         };
+
 
         window.cancelInitWorkspace = () => { document.getElementById('init-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('login-btn').innerText = "验证并进入"; pendingNewId = null; pendingNewPin = null; };
 
@@ -535,9 +526,6 @@
             });
         };
 
-        // ==========================================
-        // 核心功能：数据导出 (PDF / CSV / JSON)
-        // ==========================================
         window.exportCSV = () => {
             try {
                 if (!tripData || !tripData.expenses || tripData.expenses.length === 0) {
@@ -597,9 +585,6 @@
             document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
         };
 
-        // ==========================================
-        // UI 工具挂载
-        // ==========================================
         window.closeModal = () => { const m = document.getElementById('custom-modal'); m.classList.remove('active'); setTimeout(() => { m.classList.add('hidden'); }, 200); };
         window.openModal = (title, subtitle, fields, onConfirm, onDelete = null) => {
             document.getElementById('modal-title').innerText = title; document.getElementById('modal-subtitle').innerText = subtitle;
@@ -612,7 +597,7 @@
                     else if (f.type === 'info') inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
                     else if (f.type === 'textarea') inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
                     else if (f.type === 'model_select') inputHtml = `<div class="flex gap-2"><select id="f-${f.id}" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="${f.value || 'gemini-3.5-flash'}">${f.value || 'gemini-3.5-flash'}</option><option value="gemini-3.5-flash">gemini-3.5-flash</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select><button type="button" onclick="window.fetchGeminiModels('f-${f.keyRef}', 'f-${f.id}')" class="px-4 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl text-xs font-bold hover:bg-blue-100 transition whitespace-nowrap shadow-sm">获取列表</button></div>`;
-                    else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${f.value ? `<img src="${f.value}" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片</label><input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
+                    else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${f.value ? `<img src="${f.value}" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
                     wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
                 }
@@ -624,10 +609,72 @@
             document.getElementById('custom-modal').classList.remove('hidden'); document.getElementById('custom-modal').classList.add('active'); content.scrollTop = 0;
         };
 
-        window.handleImageUpload = (event, inputId) => {
-            const file = event.target.files[0]; if (!file) return; document.getElementById('preview-' + inputId).innerHTML = `<i class="fas fa-spinner fa-spin text-blue-500"></i>`;
-            const reader = new FileReader(); reader.onload = (e) => { const img = new Image(); img.onload = () => { const canvas = document.createElement('canvas'); const MAX_WIDTH = 800; const MAX_HEIGHT = 800; let width = img.width; let height = img.height; if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } } canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height); const base64Str = canvas.toDataURL('image/jpeg', 0.7); document.getElementById('f-' + inputId).value = base64Str; document.getElementById('preview-' + inputId).innerHTML = `<img src="${base64Str}" class="w-full h-full object-cover">`; }; img.src = e.target.result; }; reader.readAsDataURL(file);
+        window.processImageFile = (file, inputId) => {
+            const previewEl = document.getElementById('preview-' + inputId);
+            const hiddenEl = document.getElementById('f-' + inputId);
+            if (!previewEl || !hiddenEl) return;
+
+            previewEl.innerHTML = `<i class="fas fa-spinner fa-spin text-blue-500"></i>`;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    const base64Str = canvas.toDataURL('image/jpeg', 0.7);
+                    hiddenEl.value = base64Str;
+                    previewEl.innerHTML = `<img src="${base64Str}" class="w-full h-full object-cover">`;
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
         };
+
+        window.handleImageUpload = (event, inputId) => {
+            const file = event.target.files[0];
+            if (file) window.processImageFile(file, inputId);
+        };
+
+        document.addEventListener('paste', (event) => {
+            const hiddenImgInput = document.querySelector('#modal-content input[type="hidden"][id^="f-"]');
+            if (!hiddenImgInput) return;
+            const inputId = hiddenImgInput.id.replace('f-', '');
+            const items = (event.clipboardData || window.clipboardData).items;
+            
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.indexOf('image') !== -1) {
+                    const blob = item.getAsFile();
+                    
+                    window.processImageFile(blob, inputId);
+                    
+                    event.preventDefault();
+                    break;
+                }
+            }
+        });
 
         window.openImageViewer = (url) => { if (!url) return; document.getElementById('image-viewer-img').src = url; document.getElementById('image-viewer').classList.remove('hidden'); document.getElementById('image-viewer').classList.add('active'); };
         window.closeImageViewer = () => { document.getElementById('image-viewer').classList.remove('active'); setTimeout(() => { document.getElementById('image-viewer').classList.add('hidden'); document.getElementById('image-viewer-img').src = ""; }, 200); };
@@ -650,9 +697,6 @@
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
         window.getCatIcon = (cat) => { if(cat.includes('餐饮')) return 'fa-utensils'; if(cat.includes('交通')) return 'fa-train'; if(cat.includes('购物')) return 'fa-shopping-bag'; if(cat.includes('住宿')) return 'fa-bed'; if(cat.includes('娱乐')) return 'fa-ticket-alt'; return 'fa-receipt'; };
 
-        // ==========================================
-        // 核心页面渲染 
-        // ==========================================
         window.render = () => {
             if (!tripData) return;
             if (!tripData.shoppingList) tripData.shoppingList = [];
@@ -875,9 +919,6 @@
             }
         };
 
-        // ==========================================
-        // 具体操作函数挂载 (CRUD)
-        // ==========================================
         window.openSettings = () => {
             window.openModal("设置", "管理您的私人数据库及行程信息", [
                 { id: 'tName', label: '行程名称', value: tripData?.tripName || '', placeholder: '例如：漫游计划 (留空则隐藏后缀)' },
@@ -958,6 +999,188 @@
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; window.saveToCloud(); window.render(); };
         window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { tripData.shoppingList.splice(idx, 1); window.saveToCloud(); window.render(); }); };
 
+        window.askGemini = async (payload, apiKey, modelName = "gemini-3.5-flash", isJson = false) => {
+            const model = modelName || "gemini-3.5-flash";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const resData = await response.json();
+                if (resData.error) throw new Error(resData.error.message);
+                
+                const text = resData.candidates[0].content.parts[0].text;
+                if (isJson) {
+                    const cleanedText = text.replace(/```json\s?|```/g, "").trim();
+                    return JSON.parse(cleanedText);
+                }
+                return text;
+            } catch (err) {
+                console.error("Gemini API 异常:", err);
+                throw err;
+            }
+        };
+        window.openMagicEvent = () => {
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) {
+                window.openModal("未配置 API Key", "智能助手不可用", [{ id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }], () => { window.openSettings(); });
+                return;
+            }
+
+            window.openModal("✨ 一句话智能添加行程", "支持单天或跨多天日程混合输入，AI 自动分发至对应天数", [
+                { id: 'text', type: 'textarea', placeholder: '例如：第一天下午3点半去景福宫，第二天上午10点去北村韩屋村散步，第三天中午去吃烤肉' }
+            ], async (v) => {
+                if (!v.text) return false;
+                window.showAILoading("✨ AI 正在拆解并排定跨天行程...", "正在进行多天日程分发");
+                try {
+                    const members = window.getMembers();
+                    const mapProvider = tripData.settings?.mapProvider || "google";
+                    const mapRule = mapProvider === 'naver' 
+                        ? "Naver Map 链接格式要求：https://map.naver.com/v5/search/地点英文或韩文名+城市名 (空格替换为+)" 
+                        : "Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=地点英文或韩文名+城市名 (空格替换为+)";
+                    
+                    const daysContext = tripData.days.map(d => `Day ${d.id} (日期: ${d.date}, 主题: ${d.title})`).join('\n');
+
+                    const prompt = `您是专业的旅游助理，负责分析用户的日程描述。用户可能会描述单天、或跨越多个日期的行程。
+        当前旅行目的地: ${tripData.settings?.destination || '海外'}
+        当前成员列表为: [${members.join(', ')}]
+        地图偏好: ${mapProvider}。
+
+        当前已有行程的可选日期列表：
+        ${daysContext}
+
+        请根据用户的描述，提取出事件列表。必须为每个事件指定对应的 Day ID（即 dayId，必须从上述可选日期列表的 Day ID 中选择。如果用户没有指定日期或无法判断是哪一天，默认归入当前活动天 Day ${tripData.currentDay}）。
+
+        提取规则:
+        - dayId: 整数，对应可选日期列表中的 Day ID（如 1、2、3）。
+        - 时间 (time): 24小时制，格式如 "15:00"，若无明确时间则根据前后活动进行合理估算。
+        - 标签 (label): 若提及人员归属，从成员列表中选一个名字。默认填 "共同"。
+        - 类型 (type): 必须是 'activity', 'transport', 'hotel', 'meal_options', 'flight' 之一。
+        - 标题 (title): 提取最简明扼要的核心标题。
+        - 描述 (desc): 一句说明。
+        - 链接 (link): 提供搜索地址的地图链接。
+        ${mapRule}
+
+        用户描述：${v.text}
+
+        请仅返回如下结构的纯 JSON 数组，切勿夹杂 markdown 块标记（如 \`\`\`json）：
+        [
+        {"dayId":1,"time":"15:30","type":"activity","label":"共同","title":"景福宫韩服体验","desc":"下午去景福宫穿韩服","link":"https://..."},
+        {"dayId":2,"time":"10:00","type":"activity","label":"共同","title":"北村韩屋村","desc":"上午去北村韩屋村散步","link":"https://..."}
+        ]`;
+
+                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                    const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                    
+                    const results = await window.askGemini(payload, apiKey, model, true);
+
+                    if (Array.isArray(results)) {
+                        let successCount = 0;
+                        results.forEach(eventData => {
+                            const targetDayId = parseInt(eventData.dayId) || tripData.currentDay;
+                            const day = tripData.days.find(d => d.id === targetDayId);
+                            
+                            if (day) {
+                                day.events.push({
+                                    time: eventData.time || "12:00",
+                                    type: eventData.type || "activity",
+                                    label: eventData.label || "共同",
+                                    title: eventData.title || "未命名活动",
+                                    desc: eventData.desc || "",
+                                    link: eventData.link || "",
+                                    note: "✨ 一句话智能跨天添加"
+                                });
+                                day.events.sort((a, b) => a.time.localeCompare(b.time));
+                                successCount++;
+                            }
+                        });
+
+                        if (successCount > 0) {
+                            window.saveToCloud();
+                            window.render();
+                            alert(`成功智能识别并分发了 ${successCount} 项行程！`);
+                        } else {
+                            alert("未能识别到有效的行程项，请尝试换一种描述。");
+                        }
+                    } else {
+                        throw new Error("AI 返回的数据格式不符合预期数组。");
+                    }
+                } catch (e) {
+                    alert("AI 跨天行程解析失败：" + e.message);
+                } finally {
+                    window.hideAILoading();
+                }
+            });
+        };
+        window.openMagicMeal = () => {
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) {
+                window.openModal("未配置 API Key", "智能推荐不可用", [{ id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }], () => { window.openSettings(); });
+                return;
+            }
+
+            window.openModal("✨ AI 智能餐厅推荐", "为您寻觅并锁定目的地极具口碑的本地美食", [
+                { id: 'time', label: '期望就餐时间', value: '18:00' },
+                { id: 'text', type: 'textarea', placeholder: '例如：想在明洞附近吃地道的韩式烤肉，人均预算2万韩币...\n或者：推荐圣水洞非常出片的高颜值甜品咖啡厅' }
+            ], async (v) => {
+                if (!v.text) return false;
+                window.showAILoading("✨ AI 正在为您寻觅美食...", "正结合本地真实口碑为您探寻好店");
+                try {
+                    const destination = tripData.settings?.destination || "目的地";
+                    const mapProvider = tripData.settings?.mapProvider || "google";
+                    const mapRule = mapProvider === 'naver' 
+                        ? "Naver Map 链接格式要求：https://map.naver.com/v5/search/餐厅名字+目的地 (空格替换为+)" 
+                        : "Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=餐厅名字+目的地 (空格替换为+)";
+                    
+                    const prompt = `您是极其刁钻且极度熟悉本地的美食导游，当前用户正在 ${destination} 旅行。
+        请根据用户的口味诉求，推荐 2 个最真实的口碑美食好店。
+        地图偏好: ${mapProvider}。
+        ${mapRule}
+
+        用户描述：${v.text}
+
+        请仅返回如下结构的纯 JSON 对象，切勿夹杂 markdown 块标记或额外字符：
+        {
+        "title": "午餐/晚餐餐饮建议",
+        "options": [
+            {
+            "title": "具体店名 (中文 + 当地语言/英文名)",
+            "link": "对应的地图链接",
+            "rating": "星级(如 4.7)",
+            "price": "估算价格(如 人均 2万₩)",
+            "dishes": "招招牌必点菜"
+            }
+        ]
+        }`;
+
+                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                    
+                    const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                    const result = await window.askGemini(payload, apiKey, model, true);
+
+                    const day = tripData.days.find(d => d.id === tripData.currentDay);
+                    if (day) {
+                        day.events.push({
+                            time: v.time || "18:00",
+                            type: "meal_options",
+                            label: "共同",
+                            title: result.title || "餐饮建议",
+                            options: Array.isArray(result.options) ? result.options : [],
+                            note: "✨ AI 智能推荐"
+                        });
+                        day.events.sort((a, b) => a.time.localeCompare(b.time));
+                        window.saveToCloud();
+                        window.render();
+                    }
+                } catch (e) {
+                    alert("AI 餐厅推荐失败：" + e.message);
+                } finally {
+                    window.hideAILoading();
+                }
+            });
+        };
         window.openMagicShopping = () => {
             const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
             if (!apiKey) { window.openModal("未配置 API Key", "智能推荐不可用", [{ id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }], () => { window.openSettings(); }); return; }
@@ -978,6 +1201,7 @@
                 } catch(e) { alert("AI 推荐失败：" + e.message); } finally { window.hideAILoading(); }
             });
         };
+
 
         window.tempReceiptData = { base64: "", items: [], payer: "", date: "" };
 
@@ -1152,7 +1376,8 @@
                 { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
                 { id: 't1', label: '餐厅名称', placeholder: '必填' }, 
                 { id: 'l1', label: '餐厅链接', placeholder: '选填' }, 
-                { id: 'p1', label: '人均参考价', placeholder: '￥' }
+                { id: 'p1', label: '人均参考价', placeholder: '￥' },
+                { id: 'd1', label: '招牌菜/推荐菜 (用逗号分隔)', placeholder: '选填' }
             ], (v) => { 
                 if(!v.t1) { alert("请填写餐厅名称"); return false; } 
                 const day = tripData.days.find(d => d.id === tripData.currentDay); 
@@ -1225,7 +1450,6 @@
         window.setDayHotel = () => { const day = tripData.days.find(d => d.id === tripData.currentDay); window.openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [{ id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：新罗酒店' }, { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: '地图链接' }, { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }], (v) => { day.hotelName = v.t; day.hotelLink = v.l; day.hotelNote = v.n; window.saveToCloud(); window.render(); }); };
 
         const checkAuthAndProceed = async () => {
-            // 1. 如果没有配置云端，且本地有缓存，直接进入本地脱机模式；否则显示登录界面
             if (!isCloudConfigured) { 
                 if (tripId) {
                     loadLocalFallback();
@@ -1237,14 +1461,11 @@
             
             let authResolved = false;
             
-            // 2. 监听 Firebase 登录状态
             onAuthStateChanged(auth, (u) => { 
                 user = u; 
                 if (!authResolved) { 
                     authResolved = true; 
                     if (tripId) { 
-                        // ✅ 关键修复：不再调用 window.attemptLogin()
-                        // 而是直接使用从 LocalStorage 中读取到的 tripId 和 tripPin 变量，避免读取空的输入框
                         startSync(tripId, tripPin); 
                     } else { 
                         document.getElementById('login-screen').classList.remove('hidden'); 
@@ -1252,7 +1473,6 @@
                 } 
             });
             
-            // 3. 匿名登录/自定义 Token 登录
             if (!auth.currentUser) {
                 try {
                     if (!isBYOD && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { 
