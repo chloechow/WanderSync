@@ -785,43 +785,116 @@
             }
         };
 
+        window.collapsedShoppingCategories = window.collapsedShoppingCategories || {};
+
+        window.toggleShoppingCategory = (catName) => {
+            window.collapsedShoppingCategories[catName] = !window.collapsedShoppingCategories[catName];
+            window.renderShopping();
+        };
+
+        window.getShoppingCatIcon = (cat) => {
+            if (cat.includes('美妆') || cat.includes('护肤')) return 'fa-wand-magic-sparkles';
+            if (cat.includes('服饰') || cat.includes('鞋') || cat.includes('包') || cat.includes('衣')) return 'fa-shirt';
+            if (cat.includes('零食') || cat.includes('伴手礼') || cat.includes('手信') || cat.includes('食品')) return 'fa-cookie-bite';
+            if (cat.includes('数码') || cat.includes('电子')) return 'fa-laptop';
+            return 'fa-bag-shopping';
+        };
+
         window.renderShopping = () => {
             const main = document.getElementById('main-container');
             main.innerHTML = `
                 <div class="flex justify-between items-center px-1 mb-4 mt-2">
-                    <div><h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">购物清单</h3><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">种草好物</p></div>
+                    <div><h3 class="text-xl font-poppins font-black text-slate-800 tracking-tight">购物清单</h3><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">分类折叠与种草管理</p></div>
                     <div class="flex gap-2 flex-wrap justify-end">
                         <button onclick="window.openMagicShopping()" class="bg-blue-50 border border-blue-100 text-blue-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-blue-100 transition-colors flex items-center"><i class="fas fa-magic mr-1.5"></i> AI 种草</button>
                         <button onclick="window.addShoppingItem()" class="bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-2xl text-[10px] md:text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-colors flex items-center group"><i class="fas fa-plus text-blue-500 mr-1.5 group-hover:scale-110 transition-transform"></i> 添加</button>
                     </div>
                 </div>
-                <div id="shopping-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                <div id="shopping-categories-container" class="space-y-4"></div>
             `;
-            const container = document.getElementById('shopping-list-container');
-            if (tripData.shoppingList.length === 0) {
-                container.innerHTML = `<div class="col-span-full py-12 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed"><div class="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-shopping-bag text-2xl"></i></div><p class="text-sm font-medium text-slate-500">空空如也，快去种草吧！</p></div>`;
-            } else {
-                tripData.shoppingList.forEach((item, idx) => {
-                    const div = document.createElement('div');
-                    const imgHtml = item.imgUrl ? `<img src="${item.imgUrl}" onclick="window.openImageViewer('${item.imgUrl}')" onerror="this.src='https://via.placeholder.com/150?text=Error'" class="w-24 h-24 md:w-28 md:h-28 object-cover rounded-2xl flex-shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition-opacity">` : `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
-                    const boughtClass = item.bought ? 'opacity-60 grayscale bg-slate-50' : 'bg-white';
-                    const boughtBtn = item.bought ? `<button onclick="window.toggleShoppingItem(${idx})" class="text-[10px] bg-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold w-full mt-2 transition-colors">已购买</button>` : `<button onclick="window.toggleShoppingItem(${idx})" class="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold hover:bg-slate-50 w-full mt-2 transition-colors flex items-center justify-center"><i class="fas fa-check text-blue-500 mr-1.5"></i> 标记已买</button>`;
 
-                    div.className = `p-4 rounded-3xl border border-slate-200 shadow-sm flex gap-4 transition-all ${boughtClass} relative overflow-hidden`;
-                    div.innerHTML = `
+            const container = document.getElementById('shopping-categories-container');
+            if (!tripData.shoppingList || tripData.shoppingList.length === 0) {
+                container.innerHTML = `<div class="col-span-full py-12 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed"><div class="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mb-3"><i class="fas fa-shopping-bag text-2xl"></i></div><p class="text-sm font-medium text-slate-500">空空如也，快去种草吧！</p></div>`;
+                return;
+            }
+
+            const groups = {};
+            tripData.shoppingList.forEach((item, originalIdx) => {
+                const cat = item.category || '其他';
+                if (!groups[cat]) groups[cat] = [];
+                groups[cat].push({ item, originalIdx });
+            });
+
+            const standardOrder = ['美妆护肤', '服饰鞋包', '零食手信', '数码电子', '其他'];
+            const presentCategories = Object.keys(groups);
+            const finalCategoriesOrder = [
+                ...standardOrder.filter(c => presentCategories.includes(c)),
+                ...presentCategories.filter(c => !standardOrder.includes(c))
+            ];
+
+            finalCategoriesOrder.forEach(catName => {
+                const itemsInCat = groups[catName];
+                const isCollapsed = !!window.collapsedShoppingCategories[catName];
+                const totalCount = itemsInCat.length;
+                const boughtCount = itemsInCat.filter(i => i.item.bought).length;
+
+                const catSection = document.createElement('div');
+                catSection.className = "bg-white border border-slate-200 rounded-[2rem] p-4 md:p-5 shadow-sm mb-4";
+                
+                catSection.innerHTML = `
+                    <div onclick="window.toggleShoppingCategory('${catName}')" class="flex justify-between items-center cursor-pointer select-none">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 text-xs border border-slate-100/80">
+                                <i class="fas ${window.getShoppingCatIcon(catName)}"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-black text-slate-800 text-xs md:text-sm tracking-wide">
+                                    ${catName} 
+                                    <span class="ml-2 text-[10px] bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full font-bold">${boughtCount}/${totalCount} 已买</span>
+                                </h4>
+                            </div>
+                        </div>
+                        <button class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center transition-all">
+                            <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'} text-[10px]"></i>
+                        </button>
+                    </div>
+                    <div id="cat-grid-${catName}" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 ${isCollapsed ? 'hidden' : ''}"></div>
+                `;
+
+                container.appendChild(catSection);
+                const gridContainer = catSection.querySelector(`#cat-grid-${catName}`);
+
+                itemsInCat.forEach(({ item, originalIdx }) => {
+                    const itemDiv = document.createElement('div');
+                    const imgHtml = item.imgUrl ? `<img src="${item.imgUrl}" onclick="window.openImageViewer('${item.imgUrl}')" onerror="this.src='https://via.placeholder.com/150?text=Error'" class="w-24 h-24 md:w-28 md:h-28 object-cover rounded-2xl flex-shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition-opacity">` : `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
+                    const boughtClass = item.bought ? 'opacity-60 grayscale bg-slate-50' : 'bg-slate-50/40';
+                    const boughtBtn = item.bought ? `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold w-full mt-2 transition-colors">已购买</button>` : `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold hover:bg-slate-50 w-full mt-2 transition-colors flex items-center justify-center"><i class="fas fa-check text-blue-500 mr-1.5"></i> 标记已买</button>`;
+
+                    itemDiv.className = `p-4 rounded-3xl border border-slate-200/80 shadow-sm flex gap-4 transition-all ${boughtClass} relative overflow-hidden`;
+                    itemDiv.innerHTML = `
                         ${imgHtml}
                         <div class="flex-1 min-w-0 flex flex-col justify-between">
                             <div>
-                                <div class="flex justify-between items-start mb-1 gap-2"><h4 class="font-bold text-slate-800 text-sm truncate ${item.bought ? 'line-through decoration-2 decoration-slate-400' : ''}">${item.name}</h4><div class="flex gap-2 flex-shrink-0"><button onclick="window.editShoppingItem(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors bg-slate-50 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button><button onclick="window.deleteShoppingItem(${idx})" class="text-slate-400 hover:text-red-500 transition-colors bg-slate-50 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-trash text-[10px]"></i></button></div></div>
-                                <div class="flex items-center gap-2 mb-2 flex-wrap"><span class="text-[9px] ${item.source==='✨ AI 推荐' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-600'} px-2 py-0.5 rounded-lg font-bold">${item.source || '其他'}</span><span class="text-[10px] text-slate-500 font-medium truncate">参考价: <span class="text-slate-800 font-bold">${item.price || '无'}</span></span></div>
-                                ${item.note ? `<p class="text-[10px] text-slate-500 truncate leading-tight bg-slate-50 p-1.5 rounded-lg border border-slate-100"><i class="fas fa-info-circle mr-1 opacity-50"></i>${item.note}</p>` : ''}
+                                <div class="flex justify-between items-start mb-1 gap-2">
+                                    <h4 class="font-bold text-slate-800 text-sm truncate ${item.bought ? 'line-through decoration-2 decoration-slate-400' : ''}">${item.name}</h4>
+                                    <div class="flex gap-2 flex-shrink-0">
+                                        <button onclick="window.editShoppingItem(${originalIdx})" class="text-slate-400 hover:text-blue-500 transition-colors bg-white border border-slate-100 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-pen text-[10px]"></i></button>
+                                        <button onclick="window.deleteShoppingItem(${originalIdx})" class="text-slate-400 hover:text-red-500 transition-colors bg-white border border-slate-100 w-6 h-6 rounded-lg flex items-center justify-center"><i class="fas fa-trash text-[10px]"></i></button>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="text-[9px] ${item.source==='✨ AI 推荐' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-600'} px-2 py-0.5 rounded-lg font-bold">${item.source || '其他'}</span>
+                                    <span class="text-[10px] text-slate-500 font-medium truncate">参考价: <span class="text-slate-800 font-bold">${item.price || '无'}</span></span>
+                                </div>
+                                ${item.note ? `<p class="text-[10px] text-slate-500 truncate leading-tight bg-white p-1.5 rounded-lg border border-slate-100/60"><i class="fas fa-info-circle mr-1 opacity-50"></i>${item.note}</p>` : ''}
                             </div>
                             ${boughtBtn}
                         </div>
                     `;
-                    container.appendChild(div);
+                    gridContainer.appendChild(itemDiv);
                 });
-            }
+            });
         };
 
         window.renderExpenses = () => {
@@ -970,7 +1043,8 @@
         window.addShoppingItem = () => {
             window.openModal("添加商品", "", [
                 { id: 'name', label: '商品名称', placeholder: '例如：Tamburins 墨镜' },
-                { id: 'source', label: '来源/分类', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'] },
+                { id: 'category', label: '所属分类', type: 'select', options: ['美妆护肤', '服饰鞋包', '零食手信', '数码电子', '其他'], value: '其他' },
+                { id: 'source', label: '来源/种草渠道', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'] },
                 { id: 'price', label: '参考价', placeholder: '例如：￥899' },
                 { id: 'imgUrl', type: 'image', label: '商品图片', value: '' },
                 { id: 'note', label: '备注', type: 'textarea', placeholder: '例如：现代百货有售...' }
@@ -986,7 +1060,8 @@
             const item = tripData.shoppingList[idx];
             window.openModal("编辑商品", "", [
                 { id: 'name', label: '商品名称', value: item.name },
-                { id: 'source', label: '来源/分类', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'], value: item.source },
+                { id: 'category', label: '所属分类', type: 'select', options: ['美妆护肤', '服饰鞋包', '零食手信', '数码电子', '其他'], value: item.category || '其他' },
+                { id: 'source', label: '来源/种草渠道', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'], value: item.source },
                 { id: 'price', label: '参考价', value: item.price },
                 { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
                 { id: 'note', label: '备注', type: 'textarea', value: item.note }
@@ -1196,7 +1271,18 @@
                     const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
                     const items = await window.askGemini(payload, apiKey, model, true);
                     
-                    items.forEach(item => { tripData.shoppingList.push({ id: Date.now() + Math.random(), name: item.name, source: '✨ AI 推荐', price: item.price, imgUrl: '', note: item.note, bought: false }); });
+                    items.forEach(item => { 
+                        tripData.shoppingList.push({ 
+                            id: Date.now() + Math.random(), 
+                            name: item.name, 
+                            category: '其他',
+                            source: '✨ AI 推荐', 
+                            price: item.price, 
+                            imgUrl: '', 
+                            note: item.note, 
+                            bought: false 
+                        }); 
+                    });
                     window.saveToCloud(); window.render();
                 } catch(e) { alert("AI 推荐失败：" + e.message); } finally { window.hideAILoading(); }
             });
