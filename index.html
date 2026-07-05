@@ -318,7 +318,12 @@
             localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
 
             if (!isCloudConfigured || !user) return;
-            try { await setDoc(window.getTripDocRef(tripId), tripData); } catch (err) { console.error("Save Error:", err); }
+            try { 
+                await setDoc(window.getTripDocRef(tripId), tripData); 
+            } catch (err) { 
+                console.error("Save Error:", err); 
+                alert("⚠️ 云端数据保存失败！错误信息：\n" + err.message + "\n\n（常见原因：\n1. 上传了较大的图片导致数据体积超出 1MB 数据库上限；\n2. 数据库权限不足 Permission Denied）");
+            }
         };
 
         const initFirebase = (configStr) => {
