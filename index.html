@@ -314,15 +314,19 @@
 
         window.saveToCloud = async () => {
             if (!tripId || !tripData) return;
-            localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
-            localStorage.setItem('trip_local_finance_v8', JSON.stringify(tripData));
+
+            try {
+                localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
+            } catch (localErr) {
+                console.warn("LocalStorage 本地存储空间已满（5MB），本地缓存失败 (不影响云端正常保存):", localErr);
+            }
 
             if (!isCloudConfigured || !user) return;
             try { 
                 await setDoc(window.getTripDocRef(tripId), tripData); 
             } catch (err) { 
                 console.error("Save Error:", err); 
-                alert("⚠️ 云端数据保存失败！错误信息：\n" + err.message + "\n\n（常见原因：\n1. 上传了较大的图片导致数据体积超出 1MB 数据库上限；\n2. 数据库权限不足 Permission Denied）");
+                alert("⚠️ 云端数据保存失败！错误信息：\n" + err.message + "\n\n（常见原因：\n1. 上传了较大的图片导致数据总体积超出 Firestore 的 1MB 单文档上限；\n2. 数据库权限不足 Permission Denied）");
             }
         };
 
@@ -626,8 +630,8 @@
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    const MAX_HEIGHT = 800;
+                    const MAX_WIDTH = 400; 
+                    const MAX_HEIGHT = 400;
                     let width = img.width;
                     let height = img.height;
                     
@@ -647,8 +651,8 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    
-                    const base64Str = canvas.toDataURL('image/jpeg', 0.7);
+                
+                    const base64Str = canvas.toDataURL('image/jpeg', 0.6);
                     hiddenEl.value = base64Str;
                     previewEl.innerHTML = `<img src="${base64Str}" class="w-full h-full object-cover">`;
                 };
@@ -656,7 +660,6 @@
             };
             reader.readAsDataURL(file);
         };
-
         window.handleImageUpload = (event, inputId) => {
             const file = event.target.files[0];
             if (file) window.processImageFile(file, inputId);
