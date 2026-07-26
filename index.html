@@ -1085,26 +1085,68 @@
         window.askGemini = async (payload, apiKey, modelName = "gemini-3.5-flash", isJson = false) => {
             const model = modelName || "gemini-3.5-flash";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-            try {
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
-                const resData = await response.json();
-                if (resData.error) throw new Error(resData.error.message);
-                
-                const text = resData.candidates[0].content.parts[0].text;
-                if (isJson) {
-                    const cleanedText = text.replace(/```json\s?|```/g, "").trim();
-                    return JSON.parse(cleanedText);
+            
+            let retries = 3; 
+            let delay = 1500;
+            
+            for (let i = 0; i <= retries; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    const resData = await response.json();
+                    
+                    if (resData.error) {
+                        const errMsg = resData.error.message;
+                        if (errMsg.toLowerCase().includes("high demand") || resData.error.code === 503 || resData.error.code === 429) {
+                            if (i < retries) {
+                                console.warn(`[AI 引擎] 遭遇拥挤限制，${delay/1000} 秒后进行第 ${i + 1} 次重试...`);
+                                await new Promise(r => setTimeout(r, delay));
+                                delay *= 2; 
+                                continue;
+                            }
+                        }
+                        throw new Error(errMsg);
+                    }
+                    
+                    if (!resData.candidates || resData.candidates.length === 0 || !resData.candidates[0].content) {
+                        throw new Error("AI 未返回有效内容，可能触发了安全拦截。");
+                    }
+                    
+                    const text = resData.candidates[0].content.parts[0].text;
+                    
+                    if (isJson) {
+                        try {
+                            let cleanedText = text.replace(/```json\s?|```/g, "").trim();
+                            const startObj = cleanedText.indexOf('{');
+                            const endObj = cleanedText.lastIndexOf('}');
+                            const startArr = cleanedText.indexOf('[');
+                            const endArr = cleanedText.lastIndexOf(']');
+                            
+                            if (startObj !== -1 && endObj !== -1 && (startArr === -1 || startObj < startArr)) {
+                                cleanedText = cleanedText.substring(startObj, endObj + 1);
+                            } else if (startArr !== -1 && endArr !== -1) {
+                                cleanedText = cleanedText.substring(startArr, endArr + 1);
+                            }
+                            
+                            return JSON.parse(cleanedText);
+                        } catch (parseErr) {
+                            console.error("JSON 解析失败，原始内容为:\n", text);
+                            throw new Error("AI 返回了无法解析的格式，请重试。");
+                        }
+                    }
+                    return text;
+                } catch (err) {
+                    if (i === retries) {
+                        console.error("Gemini API 最终异常:", err);
+                        throw err; 
+                    }
                 }
-                return text;
-            } catch (err) {
-                console.error("Gemini API 异常:", err);
-                throw err;
             }
         };
+
         window.openMagicEvent = () => {
             const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
             if (!apiKey) {
@@ -1479,36 +1521,105 @@
                 day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
             }); 
         };
-        
+
         window.addExpense = () => { 
             const locCur = tripData.settings?.currency || 'KRW';
             window.openModal("新增记账", "", [
-                { id: 'item', label: '消费项目' }, 
+                { id: 'item', label: '消费项目', placeholder: '例如：打车 / 晚餐' }, 
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
                 { id: 'amount', label: '原币金额', inputType: 'number' }, 
-                { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ] }, 
+                { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ], onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" }, 
+                { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', style: 'display:block' },
                 { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] }
+                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
+                { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
             ], (v) => { 
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
-                tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: v.item, category: v.category, amount: parseFloat(v.amount), currency: v.currency, exchangeRate: window.getEstExchangeRate(v.currency), payer: v.payer, consumers: v.consumers }); 
+                tripData.expenses.push({ 
+                    id: Date.now(), 
+                    date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), 
+                    item: v.item, 
+                    category: v.category, 
+                    amount: parseFloat(v.amount), 
+                    currency: v.currency, 
+                    actualCnyAmount: (v.currency !== 'CNY' && v.actualCny) ? parseFloat(v.actualCny) : null,
+                    exchangeRate: window.getEstExchangeRate(v.currency), 
+                    payer: v.payer, 
+                    consumers: v.consumers,
+                    note: v.note || ''
+                }); 
                 window.saveToCloud(); window.render(); 
             }); 
         };
 
-        window.editExpense = (idx) => { 
-            const ev = tripData.expenses[idx]; const locCur = tripData.settings?.currency || 'KRW';
-            window.openModal("编辑账目", "", [
-                { id: 'item', label: '消费项目', value: ev.item }, 
-                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category }, 
-                { id: 'amount', label: '原币金额', inputType: 'number', value: ev.amount }, 
-                { id: 'currency', label: '币种', type: 'select', options: [{value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'}], value: ev.currency }, 
-                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer }, 
+        window.editExpense = (idx) => {
+            const ev = tripData.expenses[idx];
+            const locCur = tripData.settings?.currency || 'KRW';
+            
+            let isGroup = !!ev.groupId;
+            let groupItems = isGroup ? tripData.expenses.filter(e => e.groupId === ev.groupId) : [];
+            let groupTotalOrig = isGroup ? groupItems.reduce((sum, e) => sum + e.amount, 0) : ev.amount;
+            let groupTotalCny = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualCnyAmount || 0), 0) : (ev.actualCnyAmount || '');
+            if (groupTotalCny === 0) groupTotalCny = '';
+
+            let fields = [
+                { id: 'item', label: '消费项目', value: ev.item },
+                { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
+                { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
+                { id: 'currency', label: '币种', type: 'select', options: [{value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'}], value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" },
+            ];
+
+            if (isGroup && ev.currency !== 'CNY') {
+                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${groupTotalOrig.toFixed(2)} ${ev.currency})。请在下方填写【整单实付RMB】，系统将自动按比例拆分至各商品。` });
+                fields.push({ id: 'actualCny', label: '整单实付扣款 (RMB)', inputType: 'number', value: groupTotalCny, style: 'display:block' });
+            } else {
+                fields.push({ id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency !== 'CNY' ? 'display:block' : 'display:none' });
+            }
+
+            fields.push(
+                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer },
                 { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
-            ], (v) => { 
-                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
-                ev.item = v.item; ev.category = v.category; ev.amount = parseFloat(v.amount); ev.currency = v.currency; ev.payer = v.payer; ev.consumers = v.consumers; window.saveToCloud(); window.render(); 
-            }); 
+            );
+
+            if (isGroup) {
+                fields.push({ id: 'receiptLabel', label: '所属小票标签 (修改将同步至整单)', value: ev.receiptLabel || '', placeholder: '例如：松本清药妆' });
+            }
+            fields.push({ id: 'note', label: '单项备注说明 (可选)', value: ev.note || '', placeholder: '例如：帮别人代购...' });
+
+            window.openModal("编辑账目", "", fields, (v) => {
+                if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; }
+                ev.item = v.item;
+                ev.category = v.category;
+                ev.amount = parseFloat(v.amount);
+                ev.currency = v.currency;
+                ev.payer = v.payer;
+                ev.consumers = v.consumers;
+                ev.note = v.note || '';
+
+                if (isGroup && v.receiptLabel !== undefined) {
+                    groupItems.forEach(item => item.receiptLabel = v.receiptLabel);
+                }
+
+                if (v.currency !== 'CNY' && v.actualCny) {
+                    let totalActualCny = parseFloat(v.actualCny);
+                    if (isGroup) {
+                        groupItems.forEach(item => {
+                            item.actualCnyAmount = (item.amount / groupTotalOrig) * totalActualCny;
+                        });
+                    } else {
+                        ev.actualCnyAmount = totalActualCny;
+                    }
+                } else {
+                    ev.actualCnyAmount = null;
+                    if (isGroup && v.currency !== 'CNY') {
+                        groupItems.forEach(item => item.actualCnyAmount = null);
+                    }
+                }
+                window.saveToCloud(); window.render();
+            }, () => {
+                tripData.expenses.splice(idx, 1);
+                window.saveToCloud(); window.render();
+            });
         };
 
         window.deleteExpense = (idx) => { window.openModal("删除账目", "", [{ id: 'i', label: '确认', type: 'info', value: '确定删除此条记账记录吗？' }], () => { tripData.expenses.splice(idx, 1); window.saveToCloud(); window.render(); }); };
