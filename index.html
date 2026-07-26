@@ -784,7 +784,21 @@
                                 <div class="flex items-center gap-2 mb-2 flex-wrap"><span class="text-[10px] md:text-[11px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">${ev.time}</span>${labelHtml}</div>
                                 ${ev.type === 'meal_options' ? `<h4 class="font-bold text-slate-800 mb-3 break-words text-sm md:text-base">${ev.title}</h4><div class="space-y-2 md:space-y-3">${safeOptions.map(opt => `<div class="bg-slate-50 p-3 md:p-4 rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm w-full"><div class="flex justify-between items-start md:items-center mb-1 gap-2"><a href="${opt.link}" target="_blank" class="text-xs md:text-sm font-bold text-slate-800 break-words hover:text-indigo-600 leading-tight">${opt.title || '未命名'} <i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i></a><span class="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-2 py-0.5 rounded-md font-bold whitespace-nowrap flex-shrink-0 mt-0.5 md:mt-0">⭐ ${opt.rating || '4.5'}</span></div><div class="text-[10px] text-slate-500 font-medium break-words leading-relaxed mt-1">人均: ${opt.price || '未知'} | 必点: ${opt.dishes || '无'}</div></div>`).join('')}</div>` : `<div class="pr-2 md:pr-6"><a href="${ev.link || '#'}" target="_blank" class="font-bold text-slate-800 leading-tight block break-words text-sm md:text-base hover:text-indigo-600">${ev.title} ${ev.link && ev.link !== '#' ? '<i class="fas fa-external-link-alt text-[8px] opacity-30 ml-1"></i>' : ''}</a><p class="text-[11px] md:text-xs text-slate-500 mt-1 md:mt-2 leading-relaxed font-medium break-words">${ev.desc || ''}</p></div>`}
                                 <div contenteditable="true" class="mt-3 pt-3 border-t border-dashed border-slate-200 text-[11px] text-slate-500 focus:outline-none focus:text-slate-800 transition-colors break-words w-full" onblur="window.updateItemNote(${idx}, this.innerText)" placeholder="点击添加行程备注...">${ev.note || ""}</div>
-                                <div class="mt-2 bg-slate-50 p-2 md:p-3 rounded-2xl text-xs border border-slate-100 flex justify-between items-center group/review min-w-0">${ev.review_rating ? `<div class="flex-1 min-w-0 pr-2 truncate"><span class="text-amber-400 text-[10px] tracking-widest mr-1 md:mr-2 flex-shrink-0">${'★'.repeat(ev.review_rating)}${'☆'.repeat(5-ev.review_rating)}</span> <span class="text-slate-600 font-medium truncate">${ev.review_text || '已打卡'}</span></div><button onclick="window.editReview(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors sm:opacity-0 group-hover/review:opacity-100 flex-shrink-0"><i class="fas fa-pen text-[10px]"></i></button>` : `<button onclick="window.editReview(${idx})" class="text-slate-400 hover:text-blue-500 font-bold text-[10px] transition-colors whitespace-nowrap"><i class="fas fa-star mr-1"></i> 游后点评</button>`}</div>
+                                <div class="mt-2 bg-slate-50 p-3 rounded-2xl text-xs border border-slate-100 flex justify-between items-start group/review min-w-0">
+                                    ${ev.review_rating ? `
+                                        <div class="flex-1 min-w-0 pr-2 flex items-start gap-2">
+                                            <div class="text-amber-400 text-[10px] tracking-widest flex-shrink-0 mt-0.5">${'★'.repeat(ev.review_rating)}${'☆'.repeat(5-ev.review_rating)}</div>
+                                            <div class="text-slate-600 font-medium whitespace-pre-wrap break-words leading-relaxed">${ev.review_text || '已打卡'}</div>
+                                        </div>
+                                        <button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 transition-colors sm:opacity-0 group-hover/review:opacity-100 flex-shrink-0 mt-0.5">
+                                            <i class="fas fa-pen text-[10px]"></i>
+                                        </button>
+                                    ` : `
+                                        <button onclick="editReview(${idx})" class="text-slate-400 hover:text-blue-500 font-bold text-[10px] transition-colors whitespace-nowrap">
+                                            <i class="fas fa-star mr-1"></i> 添加游后点评
+                                        </button>
+                                    `}
+                                </div>
                             </div>
                             <div class="flex flex-col gap-2 flex-shrink-0 mt-1"><button onclick="window.editEvent(${idx})" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200 shadow-sm transition-all"><i class="fas fa-pen text-[10px]"></i></button><button onclick="window.requestDeleteItem(${idx})" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200 shadow-sm transition-all"><i class="fas fa-trash text-[10px]"></i></button></div>
                         </div>
@@ -1643,7 +1657,7 @@
             const ev = tripData.days.find(d => d.id === tripData.currentDay).events[idx]; 
             window.openModal("游后点评", "", [
                 { id: 'rating', label: '推荐指数 (1-5星)', type: 'select', options: ['5', '4', '3', '2', '1'], value: (ev.review_rating || '5').toString() }, 
-                { id: 'text', label: '一句话点评', placeholder: '比如：排队太长...', value: ev.review_text || '' }
+                { id: 'text', label: '点评', type: 'textarea', placeholder: '记录游玩体验', value: ev.review_text || '' }
             ], (v) => { 
                 ev.review_rating = parseInt(v.rating); 
                 ev.review_text = v.text; 
