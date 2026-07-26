@@ -701,6 +701,7 @@
         window.recalculateAllDates = () => { if (!tripData || !tripData.settings || !tripData.settings.startDate) return; tripData.days.forEach((day, index) => { day.date = window.formatDateFromStart(tripData.settings.startDate, index); }); };
         window.getCurrencySymbol = (cur) => { const map = { 'JPY': '¥', 'CNY': '¥', 'KRW': '₩', 'USD': '$', 'EUR': '€', 'GBP': '£', 'THB': '฿', 'AUD': 'A$' }; return map[cur] || cur; };
         window.getEstExchangeRate = (cur) => { const map = { 'JPY': "0.048", 'KRW': "0.0053", 'USD': "7.2", 'EUR': "7.8", 'GBP': "9.1", 'THB': "0.2", 'AUD': "4.7" }; return map[cur] || "1.0"; };
+        window.getTodayString = () => { const d = new Date(); return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0'); };
         window.getMembers = () => { if (tripData && tripData.settings && tripData.settings.members && tripData.settings.members.length > 0) return tripData.settings.members; return ['成员 A', '成员 B']; };
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
         window.getCatIcon = (cat) => { if(cat.includes('餐饮')) return 'fa-utensils'; if(cat.includes('交通')) return 'fa-train'; if(cat.includes('购物')) return 'fa-shopping-bag'; if(cat.includes('住宿')) return 'fa-bed'; if(cat.includes('娱乐')) return 'fa-ticket-alt'; return 'fa-receipt'; };
@@ -962,28 +963,64 @@
             
             const listContainer = document.getElementById('expense-list-container');
             if (!tripData.expenses || tripData.expenses.length === 0) {
-                listContainer.innerHTML = `<div class="col-span-full py-10 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed"><div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-2"><i class="fas fa-receipt text-lg"></i></div><p class="text-xs font-medium text-slate-500">暂无记账记录</p></div>`;
+                listContainer.innerHTML = `
+                <div class="col-span-full py-10 flex flex-col items-center justify-center bg-white rounded-3xl border border-slate-200 border-dashed">
+                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-2"><i class="fas fa-receipt text-lg"></i></div>
+                    <p class="text-xs font-medium text-slate-500">暂无记账记录</p>
+                </div>`;
             } else {
-                [...tripData.expenses].reverse().forEach((e, revIdx) => {
-                    const idx = tripData.expenses.length - 1 - revIdx;
+                let expensesWithOrigIdx = tripData.expenses.map((e, idx) => ({ ...e, _origIdx: idx }));
+                
+                expensesWithOrigIdx.sort((a, b) => {
+                    const dateA = a.date || "";
+                    const dateB = b.date || "";
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return b.id - a.id;
+                });
+
+                expensesWithOrigIdx.forEach((e) => {
+                    const idx = e._origIdx;
                     const div = document.createElement('div');
+                    
                     const isUnsettledForeign = e.currency !== 'CNY' && (e.actualCnyAmount == null || e.actualCnyAmount === '');
                     const isGrouped = !!e.groupId;
-                    div.className = isUnsettledForeign ? "bg-amber-50/30 p-4 md:p-5 rounded-3xl border border-amber-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden active:scale-[0.98] cursor-pointer" : "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden hover:border-blue-300 active:scale-[0.98] cursor-pointer";
+                    
+                    div.className = isUnsettledForeign
+                        ? "bg-amber-50/30 p-4 md:p-5 rounded-3xl border border-amber-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden active:scale-[0.98] cursor-pointer"
+                        : "bg-white p-4 md:p-5 rounded-3xl border border-slate-200 shadow-sm flex justify-between items-center transition-all relative overflow-hidden hover:border-blue-300 active:scale-[0.98] cursor-pointer";
+                    
                     div.onclick = () => window.editExpense(idx);
 
-                    const cnyVal = e.currency === 'CNY' ? e.amount : (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))).toFixed(2);
+                    const cnyVal = (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))).toFixed(2);
                     const iconCls = window.getCatIcon(e.category || '其他/Other');
 
-                    let cnyDisplayHtml = e.currency === 'CNY' ? `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">人民币支付</p>` : (!isUnsettledForeign ? `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>实付 ¥${parseFloat(e.actualCnyAmount).toFixed(2)}</p>` : `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`);
-                    let groupBadgeHtml = isGrouped ? `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100 flex-shrink-0"><i class="fas fa-receipt"></i> ${e.receiptLabel || '小票合单'}</span>` : (e.note && e.note.includes('✨ AI') ? `<span class="text-[8px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-bold mr-1 border border-purple-100 flex-shrink-0"><i class="fas fa-magic"></i> AI 提取</span>` : '');
+                    let cnyDisplayHtml = '';
+                    if (e.currency === 'CNY') {
+                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">人民币支付</p>`;
+                    } else if (!isUnsettledForeign) {
+                        cnyDisplayHtml = `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>实付 ¥${parseFloat(e.actualCnyAmount).toFixed(2)}</p>`;
+                    } else {
+                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`;
+                    }
+
+                    let groupBadgeHtml = '';
+                    if (isGrouped) {
+                         groupBadgeHtml = `<span class="text-[8px] bg-indigo-50 text-indigo-500 px-1.5 py-0.5 rounded font-bold mr-1 border border-indigo-100 flex-shrink-0"><i class="fas fa-receipt"></i> ${e.receiptLabel || '小票合单'}</span>`;
+                    } else if (e.note && e.note.includes('✨ AI')) {
+                         groupBadgeHtml = `<span class="text-[8px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-bold mr-1 border border-purple-100 flex-shrink-0"><i class="fas fa-magic"></i> AI 提取</span>`;
+                    }
+                    
                     const itemNote = (e.note && !e.note.includes('✨ AI')) ? `<div class="text-[10px] text-slate-500 mt-2 bg-slate-50 p-1.5 rounded-lg inline-block border border-slate-100 leading-tight w-fit"><i class="fas fa-quote-left opacity-40 mr-1 text-[8px]"></i>${e.note}</div>` : '';
 
                     div.innerHTML = `
                         <div class="flex items-center gap-4 min-w-0 pr-2">
                             <div class="w-12 h-12 rounded-2xl ${isUnsettledForeign ? 'bg-amber-100 text-amber-500' : 'bg-slate-50 text-slate-400'} flex items-center justify-center flex-shrink-0 transition-colors z-10"><i class="fas ${iconCls}"></i></div>
                             <div class="min-w-0 flex-1 z-10">
-                                <div class="flex items-center gap-2 mb-1">${groupBadgeHtml}<p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>${isUnsettledForeign ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}</div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    ${groupBadgeHtml}
+                                    <p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>
+                                    ${isUnsettledForeign ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
+                                </div>
                                 <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
                                 ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
                                 ${itemNote}
@@ -1395,66 +1432,187 @@
 
         window.analyzeReceipt = async () => {
             const btn = document.getElementById('btn-analyze-receipt');
-            btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> 正在识别提取中...`; btn.disabled = true; btn.classList.add('opacity-70', 'cursor-not-allowed');
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> 正在识别提取中...`;
+            btn.disabled = true;
+            btn.classList.add('opacity-70', 'cursor-not-allowed');
+
             const apiKey = tripData.settings.geminiApiKey || localStorage.getItem('gemini_api_key');
-            const base64Data = window.tempReceiptData.base64.split(',')[1];
+            const base64Data = tempReceiptData.base64.split(',')[1];
+
             try {
-                const payload = { contents: [{ parts: [ { text: "Analyze this receipt carefully. Extract each purchased item and calculate its ACTUAL FINAL PAID PRICE. You MUST proportionally distribute any overall taxes, service charges, or overall discounts to each individual item's price. The sum of the returned items' amounts MUST EXACTLY EQUAL the final total paid amount on the receipt. DO NOT list taxes or discounts as separate items. Translate item names to Chinese. Return ONLY a valid JSON object matching exactly this structure: {\"items\": [{\"item\": \"translated name\", \"amount\": 1500, \"category\": \"餐饮/Food\"}]}. The 'category' field must be chosen from exactly one of these strings: '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'." }, { inlineData: { mimeType: "image/jpeg", data: base64Data } } ] }], generationConfig: { responseMimeType: "application/json" } };
-                const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
-                const result = await window.askGemini(payload, apiKey, model, true);
-                window.tempReceiptData.items = result.items || []; window.tempReceiptData.items.forEach(i => { i.consumer = '共同'; i.note = ''; }); window.tempReceiptData.payer = window.getMembers()[0]; window.tempReceiptData.date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'});
+                const promptText = "Analyze this receipt carefully. Extract each purchased item and calculate its ACTUAL FINAL PAID PRICE. You MUST proportionally distribute any overall taxes, service charges, or overall discounts to each individual item's price. The sum of the returned items' amounts MUST EXACTLY EQUAL the final total paid amount on the receipt. DO NOT list taxes or discounts as separate items. Translate item names to Chinese. \n\nAdditionally, extract the receipt DATE (format as MM/DD). Generate a short receiptLabel (e.g., '松本清药妆' or '7-11便利店'). \n\nReturn ONLY a valid JSON object matching exactly this structure: {\"date\": \"06/28\", \"receiptLabel\": \"Store Name\", \"items\": [{\"item\": \"translated name\", \"amount\": 1500, \"category\": \"餐饮/Food\"}]}. The 'category' field must be chosen from exactly one of these strings: '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'.";
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${tripData?.settings?.geminiModel || 'gemini-3.5-flash'}:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: promptText }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
+                        generationConfig: { responseMimeType: "application/json" }
+                    })
+                });
+
+                const resData = await response.json();
+                if (resData.error) throw new Error(resData.error.message);
+                
+                let text = resData.candidates[0].content.parts[0].text;
+                text = text.replace(/```json\s?|```/g, '').trim();
+                const result = JSON.parse(text);
+                
+                tempReceiptData.items = result.items || [];
+                tempReceiptData.items.forEach(i => { i.consumer = '共同'; i.note = ''; });
+                tempReceiptData.payer = window.getMembers()[0];
+                tempReceiptData.date = result.date || window.getTodayString();
+                tempReceiptData.receiptLabel = result.receiptLabel || "";
+
                 window.renderReceiptSplitterUI();
+
             } catch (err) {
-                console.error(err); btn.innerHTML = `识别失败，请重试`; btn.disabled = false; btn.classList.remove('opacity-70', 'cursor-not-allowed'); alert("识别失败: 请检查 API Key 是否正确，或稍后重试。\n" + err.message);
+                console.error(err);
+                btn.innerHTML = `识别失败，请重试`;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+                alert("识别失败: 请检查 API Key 或图片是否清晰。\n" + err.message);
             }
         };
 
         window.renderReceiptSplitterUI = () => {
             const content = document.getElementById('receipt-modal-content');
-            document.getElementById('receipt-modal-title').innerText = "账单智能切分"; document.getElementById('receipt-modal-subtitle').innerText = "请仔细校对并分配使用人"; document.getElementById('receipt-modal-footer').classList.remove('hidden');
-            const members = window.getMembers(); const payerOptions = members.map(m => `<option value="${m}" ${window.tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join(''); const locCur = tripData.settings?.currency || 'KRW';
+            document.getElementById('receipt-modal-title').innerText = "账单智能切分";
+            document.getElementById('receipt-modal-subtitle').innerText = "请仔细校对并分配使用人";
+            document.getElementById('receipt-modal-footer').classList.remove('hidden');
+
+            const members = window.getMembers();
+            const payerOptions = members.map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
+            const locCur = tripData.settings?.currency || 'KRW';
+
             let html = `
-                <div class="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] p-3 rounded-2xl mb-4 font-medium flex gap-2"><i class="fas fa-info-circle mt-0.5"></i><span>AI 已尝试自动分摊税费与折扣。如有偏差，请直接在下方输入框中点击校对修改。</span></div>
+                <div class="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] p-3 rounded-2xl mb-4 font-medium flex gap-2">
+                    <i class="fas fa-info-circle mt-0.5"></i> 
+                    <span>AI 已尝试自动提取日期、摘要并分摊税费折扣。如有偏差，请直接在下方校对修改。</span>
+                </div>
                 <div class="bg-white p-4 rounded-2xl mb-4 border border-slate-200 shadow-sm space-y-3">
                     <div class="grid grid-cols-2 gap-3">
-                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">全单支付人</label><select id="receipt-global-payer" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" onchange="window.updateTempPayer(this.value)">${payerOptions}</select></div>
-                        <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">付款币种</label><select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all"><option value="${locCur}" selected>${locCur} 当地货币</option><option value="CNY">CNY 人民币</option></select></div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">全单支付人</label>
+                            <select id="receipt-global-payer" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" onchange="window.updateTempPayer(this.value)">
+                                ${payerOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">付款币种</label>
+                            <select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all">
+                                <option value="${locCur}" selected>${locCur} 当地货币</option>
+                                <option value="CNY">CNY 人民币</option>
+                            </select>
+                        </div>
                     </div>
-                    <div><label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">小票整单标签 (如: 松本清药妆)</label><input type="text" id="receipt-global-label" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" placeholder="可选填整单标签..."></div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">消费日期</label>
+                            <input type="text" id="receipt-global-date" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" value="${tempReceiptData.date}" placeholder="MM/DD">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">小票摘要标签</label>
+                            <input type="text" id="receipt-global-label" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" value="${tempReceiptData.receiptLabel}" placeholder="如：松本清药妆">
+                        </div>
+                    </div>
                 </div>
                 <div class="space-y-3 pb-2" id="receipt-items-container">
             `;
-            if (window.tempReceiptData.items.length === 0) {
+            if (tempReceiptData.items.length === 0) {
                 html += `<p class="text-xs text-slate-400 text-center py-4">未识别到商品项目</p>`;
             } else {
-                window.tempReceiptData.items.forEach((item, idx) => {
+                tempReceiptData.items.forEach((item, idx) => {
                     const consumerOptions = ['共同', ...members].map(m => `<option value="${m}" ${item.consumer === m ? 'selected' : ''}>${m}</option>`).join('');
                     html += `
                         <div class="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm relative group transition-all hover:border-blue-300">
                             <button onclick="window.removeReceiptItem(${idx})" class="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-lg text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:text-red-500 shadow-sm flex items-center justify-center z-10"><i class="fas fa-times"></i></button>
-                            <div class="flex gap-2 mb-2.5"><input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}"><div class="relative w-28 flex-shrink-0"><span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(locCur)}</span><input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}"></div></div>
-                            <div class="flex gap-2 mb-2"><select id="ri-cat-${idx}" class="flex-1 p-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-500 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="餐饮/Food" ${item.category.includes('餐饮')?'selected':''}>🍔 餐饮/Food</option><option value="购物/Shopping" ${item.category.includes('购物')?'selected':''}>🛍️ 购物/Shopping</option><option value="交通/Transport" ${item.category.includes('交通')?'selected':''}>🚆 交通/Transport</option><option value="住宿/Hotel" ${item.category.includes('住宿')?'selected':''}>🏨 住宿/Hotel</option><option value="娱乐/Entertainment" ${item.category.includes('娱乐')?'selected':''}>🎟️ 娱乐/Ent.</option><option value="其他/Other" ${item.category.includes('其他')?'selected':''}>📦 其他/Other</option></select><select id="ri-con-${idx}" class="flex-1 p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all">${consumerOptions}</select></div>
-                            <div><input id="ri-note-${idx}" type="text" class="w-full p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="单品附加备注 (选填)..." value="${item.note || ''}"></div>
+                            <div class="flex gap-2 mb-2.5">
+                                <input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}">
+                                <div class="relative w-28 flex-shrink-0">
+                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(locCur)}</span>
+                                    <input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}">
+                                </div>
+                            </div>
+                            <div class="flex gap-2 mb-2">
+                                <select id="ri-cat-${idx}" class="flex-1 p-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-500 font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                                    <option value="餐饮/Food" ${item.category.includes('餐饮')?'selected':''}>🍔 餐饮/Food</option>
+                                    <option value="购物/Shopping" ${item.category.includes('购物')?'selected':''}>🛍️ 购物/Shopping</option>
+                                    <option value="交通/Transport" ${item.category.includes('交通')?'selected':''}>🚆 交通/Transport</option>
+                                    <option value="住宿/Hotel" ${item.category.includes('住宿')?'selected':''}>🏨 住宿/Hotel</option>
+                                    <option value="娱乐/Entertainment" ${item.category.includes('娱乐')?'selected':''}>🎟️ 娱乐/Ent.</option>
+                                    <option value="其他/Other" ${item.category.includes('其他')?'selected':''}>📦 其他/Other</option>
+                                </select>
+                                <select id="ri-con-${idx}" class="flex-1 p-2 bg-blue-50 border border-blue-100 text-blue-600 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                                    ${consumerOptions}
+                                </select>
+                            </div>
+                            <div>
+                                <input id="ri-note-${idx}" type="text" class="w-full p-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="单品附加备注 (选填)..." value="${item.note || ''}">
+                            </div>
                         </div>
                     `;
                 });
             }
-            html += `</div>`; content.innerHTML = html;
+
+            html += `</div>`;
+            content.innerHTML = html;
+
             document.getElementById('receipt-modal-confirm-btn').onclick = () => {
-                const currency = document.getElementById('receipt-global-currency').value; const receiptLabel = document.getElementById('receipt-global-label').value.trim(); const payer = window.tempReceiptData.payer; const date = new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}); const groupId = 'grp_' + Date.now();
-                window.tempReceiptData.items.forEach((item, idx) => { const nameEl = document.getElementById(`ri-name-${idx}`); const amtEl = document.getElementById(`ri-amt-${idx}`); const catEl = document.getElementById(`ri-cat-${idx}`); const conEl = document.getElementById(`ri-con-${idx}`); const noteEl = document.getElementById(`ri-note-${idx}`); if (nameEl) item.item = nameEl.value; if (amtEl) item.amount = parseFloat(amtEl.value) || 0; if (catEl) item.category = catEl.value; if (conEl) item.consumer = conEl.value; if (noteEl) item.note = noteEl.value; });
-                let totalLocal = 0; window.tempReceiptData.items.forEach(item => { if (!item.item || !item.amount) return; totalLocal += parseFloat(item.amount); });
-                let addedCount = 0;
-                window.tempReceiptData.items.forEach(item => {
+                const currency = document.getElementById('receipt-global-currency').value;
+                const receiptLabel = document.getElementById('receipt-global-label').value.trim();
+                const globalDate = document.getElementById('receipt-global-date').value.trim() || window.getTodayString();
+                const payer = tempReceiptData.payer;
+                const groupId = 'grp_' + Date.now();
+                
+                tempReceiptData.items.forEach((item, idx) => {
+                    const nameEl = document.getElementById(`ri-name-${idx}`);
+                    const amtEl = document.getElementById(`ri-amt-${idx}`);
+                    const catEl = document.getElementById(`ri-cat-${idx}`);
+                    const conEl = document.getElementById(`ri-con-${idx}`);
+                    const noteEl = document.getElementById(`ri-note-${idx}`);
+                    if (nameEl) item.item = nameEl.value;
+                    if (amtEl) item.amount = parseFloat(amtEl.value) || 0;
+                    if (catEl) item.category = catEl.value;
+                    if (conEl) item.consumer = conEl.value;
+                    if (noteEl) item.note = noteEl.value;
+                });
+                
+                let totalLocal = 0;
+                tempReceiptData.items.forEach(item => {
                     if (!item.item || !item.amount) return;
-                    tripData.expenses.push({ id: Date.now() + Math.random(), groupId: groupId, groupTotalJpy: totalLocal, receiptLabel: receiptLabel, date: date, item: item.item, category: item.category || '其他/Other', amount: parseFloat(item.amount), currency: currency, actualCnyAmount: null, exchangeRate: window.getEstExchangeRate(currency), payer: payer, consumers: item.consumer || '共同', note: item.note || '' });
+                    totalLocal += parseFloat(item.amount);
+                });
+
+                let addedCount = 0;
+                tempReceiptData.items.forEach(item => {
+                    if (!item.item || !item.amount) return;
+                    tripData.expenses.push({
+                        id: Date.now() + Math.random(),
+                        groupId: groupId,
+                        groupTotalJpy: totalLocal, 
+                        receiptLabel: receiptLabel,
+                        date: globalDate, // ✅ 存储自动提取或校对后的日期
+                        item: item.item,
+                        category: item.category || '其他/Other',
+                        amount: parseFloat(item.amount),
+                        currency: currency,
+                        actualCnyAmount: null,
+                        exchangeRate: window.getEstExchangeRate(currency),
+                        payer: payer,
+                        consumers: item.consumer || '共同',
+                        note: item.note || ''
+                    });
                     addedCount++;
                 });
-                if (addedCount > 0) { window.saveToCloud(); window.render(); }
+
+                if (addedCount > 0) {
+                    window.saveToCloud(); 
+                    window.render();
+                }
                 window.closeReceiptModal();
             };
         };
-
+        
         window.updateTempPayer = (val) => { window.tempReceiptData.payer = val; };
         window.removeReceiptItem = (idx) => { window.tempReceiptData.items.splice(idx, 1); window.renderReceiptSplitterUI(); };
 
@@ -1525,6 +1683,7 @@
         window.addExpense = () => { 
             const locCur = tripData.settings?.currency || 'KRW';
             window.openModal("新增记账", "", [
+                { id: 'date', label: '消费日期 (MM/DD)', value: window.getTodayString(), placeholder: '例如：06/28' },
                 { id: 'item', label: '消费项目', placeholder: '例如：打车 / 晚餐' }, 
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'] }, 
                 { id: 'amount', label: '原币金额', inputType: 'number' }, 
@@ -1537,7 +1696,7 @@
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
                 tripData.expenses.push({ 
                     id: Date.now(), 
-                    date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), 
+                    date: v.date || window.getTodayString(),
                     item: v.item, 
                     category: v.category, 
                     amount: parseFloat(v.amount), 
@@ -1563,6 +1722,7 @@
             if (groupTotalCny === 0) groupTotalCny = '';
 
             let fields = [
+                { id: 'date', label: '消费日期 (MM/DD)', value: ev.date || window.getTodayString(), placeholder: '例如：06/28' },
                 { id: 'item', label: '消费项目', value: ev.item },
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
                 { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
@@ -1588,6 +1748,7 @@
 
             window.openModal("编辑账目", "", fields, (v) => {
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; }
+                ev.date = v.date;
                 ev.item = v.item;
                 ev.category = v.category;
                 ev.amount = parseFloat(v.amount);
@@ -1596,8 +1757,11 @@
                 ev.consumers = v.consumers;
                 ev.note = v.note || '';
 
-                if (isGroup && v.receiptLabel !== undefined) {
-                    groupItems.forEach(item => item.receiptLabel = v.receiptLabel);
+                if (isGroup) {
+                    groupItems.forEach(item => {
+                        item.date = v.date;
+                        if (v.receiptLabel !== undefined) item.receiptLabel = v.receiptLabel;
+                    });
                 }
 
                 if (v.currency !== 'CNY' && v.actualCny) {
