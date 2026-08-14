@@ -703,6 +703,8 @@
         window.getEstExchangeRate = (cur) => { const map = { 'JPY': "0.048", 'KRW': "0.0053", 'USD': "7.2", 'EUR': "7.8", 'GBP': "9.1", 'THB': "0.2", 'AUD': "4.7" }; return map[cur] || "1.0"; };
         window.getTodayString = () => { const d = new Date(); return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0'); };
         window.getMembers = () => { if (tripData && tripData.settings && tripData.settings.members && tripData.settings.members.length > 0) return tripData.settings.members; return ['成员 A', '成员 B']; };
+        window.SHARED_PARTY = '共同';
+        window.isSharedParty = (val) => ['共同', 'both', 'together'].includes(String(val || '').trim().toLowerCase());
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
         window.getCatIcon = (cat) => { if(cat.includes('餐饮')) return 'fa-utensils'; if(cat.includes('交通')) return 'fa-train'; if(cat.includes('购物')) return 'fa-shopping-bag'; if(cat.includes('住宿')) return 'fa-bed'; if(cat.includes('娱乐')) return 'fa-ticket-alt'; return 'fa-receipt'; };
 
@@ -934,10 +936,14 @@
                 let payer = members.find(m => m.toLowerCase() === (e.payer||'').toLowerCase()) || e.payer;
                 let consumer = members.find(m => m.toLowerCase() === (e.consumers||'').toLowerCase()) || e.consumers;
 
-                if (!stats[payer]) stats[payer] = { paid: 0, used: 0 };
-                stats[payer].paid += amt;
+                if (window.isSharedParty(payer)) {
+                    let paidSplit = amt / members.length; members.forEach(m => { stats[m].paid += paidSplit; });
+                } else {
+                    if (!stats[payer]) stats[payer] = { paid: 0, used: 0 };
+                    stats[payer].paid += amt;
+                }
 
-                if (consumer === '共同' || consumer === 'Both' || consumer === 'together') {
+                if (window.isSharedParty(consumer)) {
                     let split = amt / members.length; members.forEach(m => { stats[m].used += split; });
                 } else {
                     if (!stats[consumer]) stats[consumer] = { paid: 0, used: 0 }; stats[consumer].used += amt;
@@ -1035,8 +1041,8 @@
                                     <p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>
                                     ${isUnsettledForeign ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
                                 </div>
-                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${e.payer} 付</p>
-                                ${e.consumers !== '共同' && e.consumers !== 'Both' && e.consumers !== 'together' ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${window.isSharedParty(e.payer) ? '共同支付' : `${e.payer} 付`}</p>
+                                ${!window.isSharedParty(e.consumers) ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
                                 ${itemNote}
                             </div>
                         </div>
@@ -1495,7 +1501,7 @@
             document.getElementById('receipt-modal-footer').classList.remove('hidden');
 
             const members = window.getMembers();
-            const payerOptions = members.map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
+            const payerOptions = [...members, '共同'].map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
             const locCur = tripData.settings?.currency || 'KRW';
 
             let html = `
@@ -1641,7 +1647,7 @@
                 window.showAILoading("✨ AI 正在拆解账单金额...");
                 try {
                     const membersStr = window.getMembers().join(', ');
-                    const prompt = `你是专业的账单解析器。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 当前成员: [${membersStr}]。请解析用户描述并提取: item(项目), amount(数值), currency(货币代码), payer(支付人，从成员列表选), consumers(使用人，从成员列表选 或 '共同'), category(类别)。如果未指明支付人，默认填${window.getMembers()[0]}。用户描述：${v.text} 返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码","payer":"付款人名字","consumers":"使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
+                    const prompt = `你是专业的账单解析器。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 当前成员: [${membersStr}]。请解析用户描述并提取: item(项目), amount(数值), currency(货币代码), payer(支付人，从成员列表选 或 '共同'，若描述中提到大家一起付/AA/公费/共同支付则填 '共同'), consumers(使用人，从成员列表选 或 '共同'), category(类别)。如果未指明支付人，默认填${window.getMembers()[0]}。用户描述：${v.text} 返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码","payer":"付款人名字","consumers":"使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
                     const payload = { contents: [{ parts: [{ text: `用户输入：${v.text}\n${prompt}` }] }] };
                     const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
                     const result = await window.askGemini(payload, apiKey, model, true);
@@ -1703,7 +1709,7 @@
                 { id: 'amount', label: '原币金额', inputType: 'number' }, 
                 { id: 'currency', label: '币种', type: 'select', options: [ {value: locCur, text: locCur}, {value: 'CNY', text: 'CNY'} ], onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" }, 
                 { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', style: 'display:block' },
-                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers() }, 
+                { id: 'payer', label: '支付人', type: 'select', options: [...window.getMembers(), '共同'] },
                 { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
                 { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
             ], (v) => { 
@@ -1751,7 +1757,7 @@
             }
 
             fields.push(
-                { id: 'payer', label: '支付人', type: 'select', options: window.getMembers(), value: ev.payer },
+                { id: 'payer', label: '支付人', type: 'select', options: [...window.getMembers(), '共同'], value: ev.payer },
                 { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
             );
 
