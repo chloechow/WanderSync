@@ -1,0 +1,13 @@
+{
+  "name": "wandersync-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Operational tooling for the WanderSync Firestore backend (not part of the deployed web app).",
+  "scripts": {
+    "backup": "node backup-firestore.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.3.0"
+  }
+}
