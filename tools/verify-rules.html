@@ -26,12 +26,14 @@
 
 <h3>1. 粘贴 Firebase 配置</h3>
 <p><small>控制台 → 项目设置 → 常规 → 你的应用 → SDK 设置和配置 → 复制 firebaseConfig 对象</small></p>
-<textarea id="cfg" placeholder='{
-  "apiKey": "...",
-  "authDomain": "trip-project.firebaseapp.com",
-  "projectId": "trip-project",
+<textarea id="cfg" placeholder='直接粘贴控制台那段即可，例如：
+
+const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "trip-project.firebaseapp.com",
+  projectId: "trip-project",
   ...
-}'></textarea>
+};'></textarea>
 
 <h3>2. 填一个你已知存在的同步码</h3>
 <p><input id="tripId" placeholder="例如 SEOUL2026" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px;width:260px;text-transform:uppercase"></p>
@@ -54,13 +56,55 @@ const log = (ok, title, detail) => {
   return ok;
 };
 
+// Firebase 控制台给的是 JS 对象字面量（键名不带引号），不是严格 JSON。
+// 这里同时接受三种粘贴方式：纯 JSON、裸对象字面量、以及整段
+// `const firebaseConfig = {...};` 声明。
+function parseConfig(raw) {
+  let s = (raw || '').trim();
+  if (!s) throw new Error('请先粘贴 Firebase 配置');
+
+  // 从网页/文档复制常会把直引号变成弯引号（“ ” ‘ ’），
+  // 它们在 JS 里不是合法的字符串定界符，必须先归一化。
+  // 同时把全角逗号/冒号换成半角。
+  s = s.replace(/[\u201C\u201D\u2033]/g, '"')
+       .replace(/[\u2018\u2019\u2032]/g, "'")
+       .replace(/\uFF0C/g, ',')
+       .replace(/\uFF1A/g, ':');
+
+  // 去掉 `const firebaseConfig =` / `var app =` 之类的前缀和结尾分号
+  s = s.replace(/^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*/, '').replace(/;\s*$/, '');
+
+  // 只取第一个 { 到最后一个 } 之间的部分，容忍前后多余内容
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a === -1 || b === -1 || b < a) {
+    throw new Error('没找到配置对象。请把控制台里 firebaseConfig = { ... } 的花括号连同内容一起粘进来。');
+  }
+  s = s.slice(a, b + 1);
+
+  let cfg;
+  try {
+    cfg = JSON.parse(s);            // 严格 JSON
+  } catch (_) {
+    try {
+      cfg = new Function('return (' + s + ')')();   // 裸对象字面量
+    } catch (e2) {
+      throw new Error('配置解析失败：' + e2.message + '。请确认花括号成对、没有截断。');
+    }
+  }
+
+  if (!cfg || typeof cfg !== 'object') throw new Error('配置不是一个对象');
+  const miss = ['apiKey', 'projectId'].filter(k => !cfg[k]);
+  if (miss.length) throw new Error('配置缺少必需字段：' + miss.join('、'));
+  return cfg;
+}
+
 document.getElementById('run').onclick = async () => {
   out.innerHTML = '';
   const btn = document.getElementById('run');
   btn.disabled = true; btn.textContent = '检测中…';
   const results = [];
   try {
-    const cfg = JSON.parse(document.getElementById('cfg').value.trim());
+    const cfg = parseConfig(document.getElementById('cfg').value);
     const tripId = document.getElementById('tripId').value.trim().toUpperCase();
     if (!tripId) throw new Error('请填写一个同步码');
 

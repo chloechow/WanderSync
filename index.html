@@ -2,16 +2,18 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WanderSync • Secure Entry</title>
     <link rel="stylesheet" href="./tailwind.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+    <link rel="stylesheet" href="./fontawesome-subset.css">
+    <link rel="stylesheet" href="./poppins-subset.css">
+    <link rel="preload" as="font" type="font/woff2" href="./fonts/fa-solid-900-subset.woff2" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" crossorigin>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Poppins:wght@500;700;900&display=swap');
-        
         :root {
             --primary: #475569;
             --secondary: #64748b;
@@ -23,8 +25,14 @@
             --border: #e2e8f0;
         }
 
-        body { font-family: 'Noto Sans SC', sans-serif; background-color: var(--bg); color: var(--text-main); -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background-color: var(--bg); color: var(--text-main); -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
         .font-poppins { font-family: 'Poppins', sans-serif; }
+
+        /* tailwind.min.css 是 purge 过的构建产物，只含原始 HTML 出现过的类名。
+           去掉全屏 backdrop-blur 后新用到的这两档不透明度不在里面，必须在此补上，
+           否则遮罩会变成完全透明（背景直接漏出来）。 */
+        .bg-slate-800\/60 { background-color: rgb(30 41 59 / 0.6); }
+        .bg-slate-900\/70 { background-color: rgb(15 23 42 / 0.7); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
@@ -52,7 +60,7 @@
 </head>
 <body class="print:bg-white print:pb-0 pb-32 w-full max-w-full">
 
-    <div id="config-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[300] flex items-center justify-center p-4 hidden">
+    <div id="config-screen" class="fixed inset-0 bg-slate-800/60 z-[300] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-md shadow-xl border border-slate-200 modal-animate">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -70,7 +78,7 @@
         </div>
     </div>
 
-    <div id="login-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4 hidden">
+    <div id="login-screen" class="fixed inset-0 bg-slate-800/60 z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
             <div class="flex justify-center mb-5">
                 <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center shadow-md transform rotate-3">
@@ -86,7 +94,7 @@
         </div>
     </div>
 
-    <div id="init-screen" class="fixed inset-0 bg-slate-800/40 backdrop-blur-sm z-[250] flex items-center justify-center p-4 hidden">
+    <div id="init-screen" class="fixed inset-0 bg-slate-800/60 z-[250] flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-[2rem] p-5 md:p-8 w-full max-w-lg shadow-xl border border-slate-200 modal-animate flex flex-col max-h-[90vh] overflow-hidden">
             <div id="init-form-view" class="flex flex-col flex-1 min-h-0">
                 <div class="text-center mb-5 flex-shrink-0">
@@ -172,7 +180,7 @@
     </div>
 
     <!-- Modals -->
-    <div id="ai-global-loading" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[999] hidden flex-col items-center justify-center">
+    <div id="ai-global-loading" class="fixed inset-0 bg-slate-900/70 z-[999] hidden flex-col items-center justify-center">
         <div class="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center max-w-[80%]">
             <i class="fas fa-magic text-4xl text-blue-500 mb-4 animate-bounce"></i>
             <h3 class="text-lg font-black text-slate-800 mb-1" id="ai-loading-title">正在呼叫 AI 大脑</h3>
@@ -180,7 +188,7 @@
         </div>
     </div>
 
-    <div id="custom-modal" class="fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm w-full h-full hidden">
+    <div id="custom-modal" class="fixed inset-0 z-[100] items-center justify-center p-4 bg-slate-800/60 w-full h-full hidden">
         <div class="bg-white w-full max-w-md rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden modal-animate flex flex-col max-h-[85vh]">
             <div class="p-6 flex-shrink-0 pb-2"><h3 id="modal-title" class="text-lg font-poppins font-black text-slate-800 mb-1 tracking-tight">编辑</h3><p id="modal-subtitle" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"></p></div>
             <div id="modal-content" class="p-6 space-y-4 overflow-y-auto text-left flex-1 overscroll-touch"></div>
@@ -188,7 +196,7 @@
         </div>
     </div>
 
-    <div id="receipt-modal" class="fixed inset-0 z-[150] items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm w-full h-full hidden">
+    <div id="receipt-modal" class="fixed inset-0 z-[150] items-center justify-center p-4 bg-slate-800/60 w-full h-full hidden">
         <div class="bg-white w-full max-w-md rounded-[2rem] shadow-xl border border-slate-200 overflow-hidden modal-animate flex flex-col max-h-[90vh]">
             <div class="p-6 flex-shrink-0 pb-3 border-b border-slate-50 flex justify-between items-center">
                 <div><h3 id="receipt-modal-title" class="text-lg font-poppins font-black text-slate-800 mb-0.5 tracking-tight">智能小票识别</h3><p id="receipt-modal-subtitle" class="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Gemini AI Engine</p></div>
@@ -202,7 +210,7 @@
         </div>
     </div>
 
-    <div id="image-viewer" class="fixed inset-0 z-[400] bg-slate-900/95 backdrop-blur-md hidden items-center justify-center p-4 transition-opacity" onclick="window.closeImageViewer()">
+    <div id="image-viewer" class="fixed inset-0 z-[400] bg-slate-900/95 hidden items-center justify-center p-4 transition-opacity" onclick="window.closeImageViewer()">
         <button class="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors flex items-center justify-center"><i class="fas fa-times"></i></button>
         <img id="image-viewer-img" src="" class="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl" onclick="event.stopPropagation()">
     </div>
@@ -240,9 +248,34 @@
     <div id="print-area" class="hidden w-full max-w-4xl mx-auto text-black p-4 md:p-8"></div>
 
     <script type="module">
-        import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        /* Firebase SDK 改为按需动态加载：登录页由静态 HTML 直接渲染，不再等待任何 SDK 下载。
+           firebase-firestore.js 体积最大且渲染登录页完全用不到，故与 app/auth 分开加载。 */
+        const FB_BASE = "https://www.gstatic.com/firebasejs/11.6.1/";
+        const SDK_TIMEOUT_MS = 12000;
+        const AUTH_TIMEOUT_MS = 12000;
+        const CLOUD_PAINT_TIMEOUT_MS = 8000;
+
+        let initializeApp, getApps, getApp;
+        let getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged;
+        let doc, setDoc, onSnapshot, deleteDoc;
+        let getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache;
+        let coreSdkPromise = null, firestoreSdkPromise = null;
+
+        const withTimeout = (promise, ms, label) => new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error((label || '请求') + "超时")), ms);
+            promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+        });
+
+        const loadCoreSdk = () => coreSdkPromise || (coreSdkPromise = (async () => {
+            const [appMod, authMod] = await Promise.all([ import(FB_BASE + "firebase-app.js"), import(FB_BASE + "firebase-auth.js") ]);
+            ({ initializeApp, getApps, getApp } = appMod);
+            ({ getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = authMod);
+        })().catch(e => { coreSdkPromise = null; throw e; }));
+
+        const loadFirestoreSdk = () => firestoreSdkPromise || (firestoreSdkPromise = (async () => {
+            const m = await import(FB_BASE + "firebase-firestore.js");
+            ({ doc, setDoc, onSnapshot, deleteDoc, getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } = m);
+        })().catch(e => { firestoreSdkPromise = null; throw e; }));
 
         window.sanitizeTripData = (data) => {
             if (!data || typeof data !== 'object') return null;
@@ -297,6 +330,17 @@
         let app, auth, db;
         let isCloudConfigured = false;
         let isBYOD = false; 
+        let appRevealed = false;        // App 外壳是否已经露出（缓存秒开 / 云端首帧 / 离线兜底 都会置 true）
+        let cloudLocked = false;        // 云端密码已变更等情况下停止写云端，只写本地
+        let userSkippedCloud = false;   // 用户在配置页主动选择“离线沙盒”
+        let offlineEntryArmed = false;  // 云端连不上时，再点一次按钮才离线进入（不静默降级）
+        let pinConflictNotified = false;
+        let lastSnapshotJson = null;    // 上一帧快照的序列化结果，用于跳过重复 render
+        let syncWaitTimer = null;
+        let cloudReadyPromise = null;
+        let authReadyPromise = null;
+        let cloudSdkBlocked = false;    // SDK 下载不通（被墙/断网），与“配置写错了”区分开
+        let offlineEntryFor = null;
         let tripId = localStorage.getItem('trip_sync_id') || null;
         let tripPin = localStorage.getItem('trip_sync_pin') || "";
         let pendingNewId = null;
@@ -321,7 +365,8 @@
                 console.warn("LocalStorage 本地存储空间已满（5MB），本地缓存失败 (不影响云端正常保存):", localErr);
             }
 
-            if (!isCloudConfigured || !user) return;
+            if (!isCloudConfigured || !user || cloudLocked) return;
+            if (!(await ensureDb())) return;
             try { 
                 await setDoc(window.getTripDocRef(tripId), tripData); 
             } catch (err) { 
@@ -330,9 +375,38 @@
             }
         };
 
-        const initFirebase = (configStr) => {
+        /* Firestore 只允许 initializeFirestore 一次，重复调用会抛 "Firestore has already been started"；
+           而 initFirebase 在「启动失败 -> 用户粘贴配置」的路径上确实会被调用两次，故这里用 db 做闸门。 */
+        const startFirestore = () => {
+            if (db) return true;
+            let hasIdb = false;
+            try { hasIdb = (typeof indexedDB !== 'undefined' && !!indexedDB); } catch (e) { hasIdb = false; }
+            if (hasIdb) {
+                try {
+                    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }), experimentalAutoDetectLongPolling: true });
+                    return true;
+                } catch (e) { console.warn("持久化缓存不可用，回退内存缓存:", e && e.message); }
+            }
             try {
-                let config;
+                db = initializeFirestore(app, { localCache: memoryLocalCache(), experimentalAutoDetectLongPolling: true });
+            } catch (e2) {
+                console.warn("Firestore 已启动，复用现有实例:", e2 && e2.message);
+                try { db = getFirestore(app); } catch (e3) { console.error("Firestore 初始化失败:", e3); return false; }
+            }
+            return true;
+        };
+
+        const ensureDb = async () => {
+            if (db) return true;
+            if (!app) return false;
+            try { await withTimeout(loadFirestoreSdk(), SDK_TIMEOUT_MS, "Firestore SDK 加载"); }
+            catch (e) { console.error("Firestore SDK 加载失败:", e && e.message); return false; }
+            return startFirestore();
+        };
+
+        const initFirebase = async (configStr) => {
+            let config;
+            try {
                 if (configStr) {
                     try { config = JSON.parse(configStr); } catch(e) { config = eval('(' + configStr + ')'); }
                     isBYOD = true;
@@ -341,54 +415,125 @@
                     isBYOD = false;
                 } else { return false; }
                 if (!config || !config.apiKey || !config.projectId) throw new Error("Invalid Config format");
+            } catch (err) { console.error("Firebase config invalid:", err); return false; }
+
+            try {
+                cloudSdkBlocked = false;
+                await withTimeout(loadCoreSdk(), SDK_TIMEOUT_MS, "Firebase SDK 加载");
                 if (getApps().length === 0) app = initializeApp(config); else app = getApp();
-                auth = getAuth(app); db = getFirestore(app); isCloudConfigured = true;
+                auth = getAuth(app); isCloudConfigured = true;
+                loadFirestoreSdk().catch(e => console.warn("Firestore SDK 预载失败，将在需要时重试:", e && e.message));
                 return true;
-            } catch (err) { console.error("Firebase init failed:", err); return false; }
+            } catch (err) { cloudSdkBlocked = true; console.error("Firebase SDK 不可达:", err && err.message); return false; }
         };
 
-        window.saveFirebaseConfig = () => {
+        const hasCloudConfig = () => !userSkippedCloud && (isCloudConfigured || !!localStorage.getItem('firebase_custom_config_v2') || typeof __firebase_config !== 'undefined');
+
+        window.saveFirebaseConfig = async () => {
             const val = document.getElementById('config-input').value.trim(); const errEl = document.getElementById('config-error');
             if (!val && typeof __firebase_config === 'undefined') { errEl.innerText = "必须填入你的 Firebase JSON 配置"; return; }
-            if (initFirebase(val)) {
+            errEl.innerText = "连接中…";
+            if (await initFirebase(val || undefined)) {
+                errEl.innerText = "";
                 if (val) localStorage.setItem('firebase_custom_config_v2', val);
-                document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden');
-                if (localStorage.getItem('trip_sync_id')) { document.getElementById('login-id').value = localStorage.getItem('trip_sync_id'); document.getElementById('login-pin').value = localStorage.getItem('trip_sync_pin') || ''; }
-                checkAuthAndProceed();
-            } else { errEl.innerText = "配置解析失败，请检查是否包含合法的 apiKey"; }
+                userSkippedCloud = false;
+                showScreen('login');
+                prefillLogin();
+                cloudReadyPromise = null;
+                resumeAfterReady();
+            } else { errEl.innerText = "配置无效或 SDK 无法下载，请检查 apiKey 与网络"; }
         };
 
-        window.skipConfig = () => { isCloudConfigured = false; document.getElementById('config-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); };
+        window.skipConfig = () => { isCloudConfigured = false; userSkippedCloud = true; showScreen('login'); prefillLogin(); setLoginBusy(false); };
 
-        window.attemptLogin = () => {
+        const setLoginBusy = (busy, text) => {
+            const b = document.getElementById('login-btn'); if (!b) return;
+            b.disabled = !!busy;
+            b.classList.toggle('opacity-60', !!busy);
+            b.classList.toggle('cursor-not-allowed', !!busy);
+            b.innerText = text || (busy ? "连接中…" : "验证并进入");
+        };
+
+        const prefillLogin = () => {
+            const savedId = localStorage.getItem('trip_sync_id'); if (!savedId) return;
+            const idEl = document.getElementById('login-id'), pinEl = document.getElementById('login-pin');
+            if (idEl && !idEl.value) idEl.value = savedId;
+            if (pinEl && !pinEl.value) pinEl.value = localStorage.getItem('trip_sync_pin') || '';
+        };
+
+        const setSyncBadge = (text, online) => {
+            const el = document.getElementById('sync-status'); if (!el) return;
+            el.innerText = text; el.className = 'sync-badge ' + (online ? 'sync-online' : 'sync-offline');
+        };
+
+        /* 登录页现在是静态渲染的，用户完全可能在 SDK 落地之前就点“验证并进入”。
+           这里给出真实的“连接中…”状态并等待就绪；连不上时也绝不静默降级成离线，
+           而是把按钮变成需要用户再点一次的“以离线模式继续”。 */
+        window.attemptLogin = async () => {
             const idInput = document.getElementById('login-id').value.trim().toUpperCase(); const pinInput = document.getElementById('login-pin').value.trim();
-            if (!idInput) { document.getElementById('login-error').innerText = "请输入同步码"; return; }
+            const errEl = document.getElementById('login-error');
+            if (!idInput) { errEl.innerText = "请输入同步码"; return; }
             tripId = idInput; tripPin = pinInput; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-            if (isCloudConfigured) { document.getElementById('login-btn').innerText = "检查中..."; startSync(tripId, tripPin); } 
-            else { loadLocalFallback(); }
+            if (offlineEntryArmed && offlineEntryFor === idInput) { offlineEntryArmed = false; errEl.innerText = ""; loadLocalFallback(); return; }
+            offlineEntryArmed = false;
+            errEl.innerText = "";
+            if (!hasCloudConfig()) { loadLocalFallback(); return; }
+            setLoginBusy(true, "连接中…");
+            const ready = await ensureCloudReady();
+            if (ready) { setLoginBusy(true, "检查中…"); startSync(tripId, tripPin).catch(e => { console.error("建立同步失败:", e); handleCloudUnavailable(); }); return; }
+            offlineEntryArmed = true;
+            setLoginBusy(false, "以离线模式继续");
+            errEl.innerText = "无法连接云端（网络受限或鉴权失败）。\n再点一次可用本地数据离线进入。";
         };
 
-        const showLoginError = (msg) => {
-            document.getElementById('login-error').innerText = msg; document.getElementById('login-btn').innerText = "验证并进入";
-            document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('app-wrap').classList.add('hidden');
+        /* 缓存秒开之后，用户已经在使用 App 了：此时任何一帧异常快照都不允许把人踢回登录页。 */
+        const showLoginError = (msg, force) => {
+            if (appRevealed && !force) { console.warn("[sync]", String(msg).replace(/\n/g, ' ')); return; }
+            document.getElementById('login-error').innerText = msg;
+            setLoginBusy(false);
+            offlineEntryArmed = false;
+            appRevealed = false;
+            showScreen('login');
         };
 
-        const unlockApp = () => {
-            document.getElementById('login-screen').classList.add('hidden'); document.getElementById('init-screen').classList.add('hidden'); document.getElementById('app-wrap').classList.remove('hidden');
+        /* 四个全屏容器天生互斥，任何时刻只能有一个可见。
+           登录页现在是静态可见的，光靠 z-index + 半透明遮罩盖不住它
+           （60% 的遮罩会把下面的登录框直接透出来），所以统一走这个状态机切屏。 */
+        const SCREENS = { config: 'config-screen', login: 'login-screen', init: 'init-screen', app: 'app-wrap' };
+        let currentScreen = 'login';   // 与静态 HTML 的初始状态保持一致
+        const showScreen = (name) => {
+            currentScreen = name;
+            for (const key in SCREENS) {
+                const el = document.getElementById(SCREENS[key]);
+                if (el) el.classList.toggle('hidden', key !== name);
+            }
+        };
+
+        /* 陷阱 1：onSnapshot 是持续监听，开启持久化缓存后首屏会「先缓存再服务端」连开两枪。
+           把「露出外壳」和「重绘数据」拆开，露出外壳做成幂等。 */
+        const revealApp = () => {
+            if (appRevealed && currentScreen === 'app') return;
+            appRevealed = true;
+            showScreen('app');
+        };
+
+        const refreshAppChrome = () => {
             document.title = (tripData?.tripName || "WanderSync") + " • Workspace";
             const badge = document.getElementById('trip-name-badge');
             if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
-            window.render();
         };
+
+        const unlockApp = () => { revealApp(); refreshAppChrome(); window.render(); };
 
         window.deleteEntireTrip = async () => {
             if(confirm("🚨 危险操作：确定要彻底销毁当前同步码关联的所有行程数据吗？\n删除后云端和本地均无法恢复！")) {
-                if (isCloudConfigured && tripId) { try { await deleteDoc(window.getTripDocRef(tripId)); } catch(e) {} }
+                if (isCloudConfigured && tripId) { try { if (await ensureDb()) await deleteDoc(window.getTripDocRef(tripId)); } catch(e) {} }
                 localStorage.removeItem('trip_sync_id'); localStorage.removeItem('trip_sync_pin'); localStorage.removeItem(`trip_local_${tripId}`); localStorage.removeItem('trip_local_finance_v8');
                 location.reload();
             }
         };
         window.logoutTrip = () => {
+            clearTimeout(syncWaitTimer);
             if (syncUnsubscribe) {
                 syncUnsubscribe();
                 syncUnsubscribe = null;
@@ -399,7 +544,7 @@
         };
 
 
-        window.cancelInitWorkspace = () => { document.getElementById('init-screen').classList.add('hidden'); document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('login-btn').innerText = "验证并进入"; pendingNewId = null; pendingNewPin = null; };
+        window.cancelInitWorkspace = () => { showScreen('login'); setLoginBusy(false); pendingNewId = null; pendingNewPin = null; };
 
         window.confirmInitWorkspace = async (useAI = false) => {
             const tName = document.getElementById('init-trip-name').value.trim() || "漫游计划"; const dest = document.getElementById('init-dest').value.trim() || "首尔"; const currency = document.getElementById('init-currency').value || "KRW"; const sDate = document.getElementById('init-start-date').value; const mStr = document.getElementById('init-members').value.trim() || "成员 A, 成员 B"; const mapPref = document.getElementById('init-map').value || "google"; const membersList = mStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
@@ -446,7 +591,6 @@
                     localStorage.setItem('trip_sync_id', tripId);
                     localStorage.setItem('trip_sync_pin', tripPin);
                     await window.saveToCloud();
-                    document.getElementById('init-screen').classList.add('hidden');
                     unlockApp();
                     
                     alert(`导入成功！新行程已成功部署到云端同步码: ${tripId}`);
@@ -470,7 +614,7 @@
         window.confirmAiPreview = async () => {
             const data = window._tempAiData;
             tripData = { isGeneric: true, pin: pendingNewPin, tripName: data.tName, settings: { members: data.membersList.length > 0 ? data.membersList : ['我'], startDate: data.sDate, geminiApiKey: data.apiKey, geminiModel: data.aiModel, destination: data.dest, currency: data.currency, mapProvider: data.mapPref }, currentDay: 1, expenses: [], shoppingList: [], days: data.aiDays };
-            tripId = pendingNewId; tripPin = pendingNewPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); await window.saveToCloud(); document.getElementById('init-screen').classList.add('hidden'); unlockApp();
+            tripId = pendingNewId; tripPin = pendingNewPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin); await window.saveToCloud(); unlockApp();
         };
 
         window.generateAITrip = async (apiKey, modelName, destination, dCount, membersList, sDate, userPrompt, mapProvider) => {
@@ -501,37 +645,91 @@
                 tripData = JSON.parse(JSON.stringify({ currentDay: 1, pin: tripPin, expenses: [], shoppingList: [], isGeneric: true, tripName: `本地行程 - ${tripId}`, settings: { members: ['成员 A', '成员 B'], startDate: "", destination: "首尔", currency: "KRW", geminiApiKey: "", mapProvider: "google" }, days: [ { id: 1, date: "Day 1", title: "第一天行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" } ] }));
                 localStorage.setItem(`trip_local_${tripId}`, JSON.stringify(tripData));
             }
-            document.getElementById('sync-status').innerText = '本地脱机'; document.getElementById('sync-status').className = 'sync-badge sync-offline'; unlockApp();
+            clearTimeout(syncWaitTimer);
+            setSyncBadge('本地脱机', false);
+            unlockApp();
         };
 
-        const startSync = (testId, testPin) => {
-            if (!isCloudConfigured || !user) { loadLocalFallback(); return; } 
-            if (syncUnsubscribe) syncUnsubscribe(); 
+        /* saveToCloud 一直在写 trip_local_${tripId}，之前只在失败路径上才读。
+           这里改成启动即读：命中就先把整个 App 画出来，Firebase 随后在后台对账。 */
+        const tryCacheFirstBoot = () => {
+            if (!tripId) return false;
+            let cached = null;
+            try {
+                const cachedStr = localStorage.getItem(`trip_local_${tripId}`) || localStorage.getItem('trip_local_finance_v8');
+                cached = cachedStr ? window.sanitizeTripData(JSON.parse(cachedStr)) : null;
+            } catch (e) { console.warn("本地缓存不可用，跳过秒开:", e && e.message); return false; }
+            if (!cached) return false;
+            if (cached.pin && cached.pin !== tripPin) return false;
+            tripData = cached;
+            setSyncBadge('本地缓存', false);
+            unlockApp();
+            return true;
+        };
+
+        const startSync = async (testId, testPin) => {
+            if (!isCloudConfigured) { loadLocalFallback(); return; }
+            if (!(await ensureDb())) { console.error("Firestore 不可用，切换本地模式"); handleCloudUnavailable(); return; }
+            if (!user) { loadLocalFallback(); return; }
+            if (syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
             const reqId = testId || tripId; const reqPin = testPin !== undefined ? testPin : tripPin;
-            
+            lastSnapshotJson = null;
+            clearTimeout(syncWaitTimer);
+            // 云端一直不吭声时（弱网/被墙）也要让用户进得去，不能永远停在“检查中…”
+            if (!appRevealed) syncWaitTimer = setTimeout(() => { if (!appRevealed) { console.warn("云端首帧超时，先用本地数据进入"); loadLocalFallback(); } }, CLOUD_PAINT_TIMEOUT_MS);
+
             syncUnsubscribe = onSnapshot(window.getTripDocRef(reqId), (snap) => {
+                const fromCache = !!(snap.metadata && snap.metadata.fromCache);
                 if (snap.exists()) {
                     let cloudData = window.sanitizeTripData(snap.data());
                     if (!cloudData) {
                         showLoginError("云端数据结构已严重损坏，自愈失败"); return;
                     }
 
-                    if (cloudData.pin && cloudData.pin !== reqPin) { showLoginError("访问密码错误"); } 
-                    else {
-                        tripId = reqId; tripPin = reqPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
-                        tripData = cloudData; document.getElementById('sync-status').innerText = '已同步'; document.getElementById('sync-status').className = 'sync-badge sync-online'; unlockApp();
+                    if (cloudData.pin && cloudData.pin !== reqPin) {
+                        // 陷阱 2：缓存秒开后用户已经在用了，密码不符的快照不能把人踢回登录页
+                        if (appRevealed) {
+                            if (syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
+                            cloudLocked = true;
+                            setSyncBadge('密码已变更', false);
+                            if (!pinConflictNotified) { pinConflictNotified = true; alert("⚠️ 云端访问密码已被修改，云端同步已停止。\n当前修改只保存在本设备，请退出后用新密码重新登录。"); }
+                            return;
+                        }
+                        showLoginError("访问密码错误"); return;
                     }
+
+                    clearTimeout(syncWaitTimer);
+                    tripId = reqId; tripPin = reqPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
+                    cloudLocked = false; pinConflictNotified = false;
+                    setSyncBadge(fromCache ? '本地缓存' : '已同步', !fromCache);
+
+                    // 持久化缓存会让同一份数据先后到达两次（缓存帧 + 服务端帧），
+                    // 内容没变就只保证外壳露出，不重绘 —— 否则会平白多吃掉一次 contenteditable 焦点。
+                    const json = JSON.stringify(cloudData);
+                    const changed = json !== lastSnapshotJson;
+                    lastSnapshotJson = json;
+                    if (!changed) { revealApp(); return; }
+                    tripData = cloudData;
+                    try { localStorage.setItem(`trip_local_${tripId}`, json); } catch (e) { console.warn("本地缓存写入失败:", e && e.message); }
+                    unlockApp();
                 } else {
+                    // 开启持久化缓存后，“文档不存在”可能只是本地缓存里没有，不能据此弹“构建新旅程”
+                    if (fromCache) { setSyncBadge('连接中', false); return; }
+                    clearTimeout(syncWaitTimer);
+                    if (appRevealed) { setSyncBadge('云端无数据', false); return; }
                     pendingNewId = reqId; pendingNewPin = reqPin;
-                    document.getElementById('login-screen').classList.add('hidden');
+                    setLoginBusy(false);
                     const cachedKey = localStorage.getItem('gemini_api_key'); if(cachedKey) document.getElementById('init-ai-key').value = cachedKey;
-                    document.getElementById('init-screen').classList.remove('hidden'); document.getElementById('init-form-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('hidden'); document.getElementById('init-screen').classList.add('active');
+                    showScreen('init');
+                    document.getElementById('init-form-view').classList.remove('hidden'); document.getElementById('init-preview-view').classList.add('hidden'); document.getElementById('init-screen').classList.add('active');
                 }
             }, (error) => {
-                console.error("同步失败:", error); document.getElementById('sync-status').innerText = '权限被拒(离线)'; document.getElementById('sync-status').className = 'sync-badge sync-offline';
-                if (error.code === 'permission-denied' || error.message.includes('Missing')) { showLoginError("数据库权限不足！\n如果您连接的是自己的 Firebase，请进入控制台 Firestore Database -> Rules，\n确保规则为: allow read, write: if request.auth != null;"); } 
+                console.error("同步失败:", error);
+                clearTimeout(syncWaitTimer);
+                setSyncBadge('权限被拒(离线)', false);
+                if (error.code === 'permission-denied' || String(error.message || '').includes('Missing')) { showLoginError("数据库权限不足！\n如果您连接的是自己的 Firebase，请进入控制台 Firestore Database -> Rules，\n确保规则为: allow read, write: if request.auth != null;"); } 
                 else { showLoginError("网络异常或连接中断"); }
-                loadLocalFallback();
+                if (!appRevealed) loadLocalFallback();
             });
         };
 
@@ -1838,57 +2036,80 @@
         window.deleteCurrentDay = () => { if (tripData.days.length <= 1) { window.openModal("无法删除", "", [{ id: 'i', label: '提示', type: 'info', value: '行程中至少需要保留一天！' }], () => {}); return; } window.openModal("删除此日", "此操作不可恢复", [{ id: 'i', label: '警告', type: 'info', value: '确定删除这一天的所有行程安排吗？' }], () => { tripData.days = tripData.days.filter(d => d.id !== tripData.currentDay); window.recalculateAllDates(); tripData.currentDay = tripData.days[0].id; window.saveToCloud(); window.render(); }); };
         window.setDayHotel = () => { const day = tripData.days.find(d => d.id === tripData.currentDay); window.openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [{ id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：新罗酒店' }, { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: '地图链接' }, { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }], (v) => { day.hotelName = v.t; day.hotelLink = v.l; day.hotelNote = v.n; window.saveToCloud(); window.render(); }); };
 
-        const checkAuthAndProceed = async () => {
-            if (!isCloudConfigured) { 
-                if (tripId) {
-                    loadLocalFallback();
-                } else {
-                    document.getElementById('login-screen').classList.remove('hidden'); 
-                }
-                return; 
-            }
-            
-            let authResolved = false;
-            
-            onAuthStateChanged(auth, (u) => { 
-                user = u; 
-                if (!authResolved) { 
-                    authResolved = true; 
-                    if (tripId) { 
-                        startSync(tripId, tripPin); 
-                    } else { 
-                        document.getElementById('login-screen').classList.remove('hidden'); 
-                    } 
-                } 
+        /* 鉴权只做一次。注意：onAuthStateChanged 的第一帧很可能是 null（匿名登录还在路上），
+           原来的写法会把这一帧当成“鉴权结束”，于是整个会话被静默降级成离线。这里只认真实 user，
+           失败/超时才落到 false，并且允许下一次点击重试。 */
+        const ensureAuth = () => {
+            if (authReadyPromise) return authReadyPromise;
+            authReadyPromise = new Promise((resolve) => {
+                let settled = false;
+                const timer = setTimeout(() => { if (!settled) { console.warn("鉴权超时"); settled = true; resolve(false); } }, AUTH_TIMEOUT_MS);
+                const done = (ok) => { if (settled) return; settled = true; clearTimeout(timer); resolve(ok); };
+
+                onAuthStateChanged(auth, (u) => { user = u; if (u) done(true); });
+
+                (async () => {
+                    try {
+                        if (auth.currentUser) { user = auth.currentUser; done(true); return; }
+                        if (!isBYOD && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { await signInWithCustomToken(auth, __initial_auth_token); }
+                        else { await signInAnonymously(auth); }
+                    } catch (e) {
+                        console.warn("鉴权失败 (依赖 Firestore Rules 兜底):", e && e.message);
+                        done(false);
+                    }
+                })();
             });
-            
-            if (!auth.currentUser) {
-                try {
-                    if (!isBYOD && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { 
-                        await signInWithCustomToken(auth, __initial_auth_token); 
-                    } else { 
-                        await signInAnonymously(auth); 
-                    }
-                } catch (e) {
-                    console.warn("鉴权失败，将尝试强制放行 (依赖 Firestore Rules 兜底):", e.message);
-                    if (!authResolved) { 
-                        authResolved = true; 
-                        if (tripId) {
-                            loadLocalFallback(); 
-                        } else {
-                            document.getElementById('login-screen').classList.remove('hidden');
-                        }
-                    }
+            return authReadyPromise.then((ok) => { if (!ok) authReadyPromise = null; return ok; });
+        };
+
+        // 「云端可用」= SDK 到位 + App 初始化成功 + 拿到 user。失败时清空 promise，允许再点一次重试。
+        const ensureCloudReady = () => {
+            if (cloudReadyPromise) return cloudReadyPromise;
+            cloudReadyPromise = (async () => {
+                if (!isCloudConfigured) {
+                    const ok = await initFirebase(localStorage.getItem('firebase_custom_config_v2') || undefined);
+                    if (!ok) return false;
                 }
+                return await ensureAuth();
+            })();
+            return cloudReadyPromise.then(
+                (ok) => { if (!ok) cloudReadyPromise = null; return ok; },
+                (e) => { cloudReadyPromise = null; console.error("云端初始化异常:", e); return false; }
+            );
+        };
+
+        const handleCloudUnavailable = () => {
+            setSyncBadge('离线模式', false);
+            if (appRevealed) { setLoginBusy(false); return; }   // 缓存已经把 App 画出来了，安静地留在离线
+            if (tripId) {
+                offlineEntryArmed = true; offlineEntryFor = tripId;
+                setLoginBusy(false, "以离线模式继续");
+                document.getElementById('login-error').innerText = "暂时无法连接云端（网络受限）。\n再点一次按钮可用本地数据离线进入。";
+            } else {
+                setLoginBusy(false);
+                document.getElementById('login-error').innerText = "暂时无法连接云端（网络受限），请稍后重试";
             }
         };
 
-        const savedConfig = localStorage.getItem('firebase_custom_config_v2');
-        if (savedConfig) {
-            if (initFirebase(savedConfig)) { checkAuthAndProceed(); } else { document.getElementById('config-screen').classList.remove('hidden'); }
-        } else if (typeof __firebase_config !== 'undefined') {
-            if (initFirebase()) { checkAuthAndProceed(); } else { document.getElementById('config-screen').classList.remove('hidden'); }
-        } else { document.getElementById('config-screen').classList.remove('hidden'); }
+        const resumeAfterReady = async () => {
+            const ready = await ensureCloudReady();
+            if (ready) { if (tripId) startSync(tripId, tripPin).catch(e => { console.error("建立同步失败:", e); handleCloudUnavailable(); }); else setLoginBusy(false); return true; }
+            if (cloudSdkBlocked || isCloudConfigured) { handleCloudUnavailable(); return false; }
+            setLoginBusy(false);
+            if (!appRevealed) showScreen('config');
+            return false;
+        };
+
+        /* 启动：登录页已经由静态 HTML 画出来了，这里只负责“切屏 + 后台对账”。 */
+        const boot = () => {
+            if (!hasCloudConfig()) { showScreen('config'); return; }
+            prefillLogin();
+            const revealed = tryCacheFirstBoot();
+            if (tripId) setLoginBusy(true, revealed ? "连接中…" : "正在恢复行程…");
+            resumeAfterReady();
+        };
+
+        boot();
     </script>
 </body>
 </html>
