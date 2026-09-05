@@ -144,12 +144,20 @@ document.getElementById('run').onclick = async () => {
     }
 
     // 测试 3：无关路径 —— 应当拒绝
+    // 注意：路径名不能用 __xx__ 形式，Firestore 保留该格式，
+    // 客户端 SDK 会在发请求前本地校验失败（invalid-argument），
+    // 请求根本到不了服务器，等于什么都没测到。
     try {
-      await getDoc(doc(db, '__rules_probe__', 'x'));
-      results.push(log(false, '无关路径竟可读', '默认拒绝没有生效，规则可能还有过宽的 catch-all'));
+      await getDoc(doc(db, 'probe_not_in_rules', 'x'));
+      results.push(log(false, '无关路径竟可读',
+        '默认拒绝没有生效，规则里可能还留着过宽的 catch-all'));
     } catch (e) {
-      results.push(log(e.code === 'permission-denied', '无关路径（应拒绝）',
-        `${e.code} —— 未列出的路径默认拒绝，符合预期`));
+      const denied = e.code === 'permission-denied';
+      results.push(log(denied, '无关路径（应拒绝）',
+        denied
+          ? 'permission-denied —— 未列出的路径默认拒绝，符合预期'
+          : `返回的是 ${e.code}，不是 permission-denied。请求可能没真正到达服务器，
+             这条断言未能验证到规则（不代表规则有问题）。`));
     }
 
   } catch (e) {
