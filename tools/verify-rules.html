@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WanderSync 安全规则自检</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:820px;margin:40px auto;padding:0 20px;line-height:1.7;color:#1e293b}
+  textarea{width:100%;height:150px;font-family:ui-monospace,monospace;font-size:12px;padding:10px;border:1px solid #cbd5e1;border-radius:8px}
+  button{background:#1e293b;color:#fff;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .row{padding:12px 14px;border-radius:8px;margin:8px 0;border:1px solid #e2e8f0;background:#f8fafc}
+  .pass{border-color:#86efac;background:#f0fdf4}
+  .fail{border-color:#fca5a5;background:#fef2f2}
+  .verdict{padding:16px;border-radius:10px;margin-top:20px;font-weight:700}
+  code{background:#e2e8f0;padding:2px 6px;border-radius:4px;font-size:13px}
+  small{color:#64748b}
+</style>
+</head>
+<body>
+<h1>WanderSync 安全规则自检</h1>
+<p>本页面直接连你的<strong>线上 Firebase 项目</strong>，验证已发布的规则是否按预期生效。
+不写入任何数据，只做读取尝试。</p>
+
+<p><small>配置粘贴后只留在本机浏览器内存里，不会上传到任何地方。apiKey 本就是设计为公开的，
+安全性由 Firestore 规则保证。</small></p>
+
+<h3>1. 粘贴 Firebase 配置</h3>
+<p><small>控制台 → 项目设置 → 常规 → 你的应用 → SDK 设置和配置 → 复制 firebaseConfig 对象</small></p>
+<textarea id="cfg" placeholder='{
+  "apiKey": "...",
+  "authDomain": "trip-project.firebaseapp.com",
+  "projectId": "trip-project",
+  ...
+}'></textarea>
+
+<h3>2. 填一个你已知存在的同步码</h3>
+<p><input id="tripId" placeholder="例如 SEOUL2026" style="padding:10px;border:1px solid #cbd5e1;border-radius:8px;width:260px;text-transform:uppercase"></p>
+
+<p><button id="run">开始检测</button></p>
+<div id="out"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, collection, getDocs }
+  from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const out = document.getElementById('out');
+const log = (ok, title, detail) => {
+  const d = document.createElement('div');
+  d.className = 'row ' + (ok ? 'pass' : 'fail');
+  d.innerHTML = `<strong>${ok ? '✅ 通过' : '❌ 未通过'}</strong> — ${title}<br><small>${detail}</small>`;
+  out.appendChild(d);
+  return ok;
+};
+
+document.getElementById('run').onclick = async () => {
+  out.innerHTML = '';
+  const btn = document.getElementById('run');
+  btn.disabled = true; btn.textContent = '检测中…';
+  const results = [];
+  try {
+    const cfg = JSON.parse(document.getElementById('cfg').value.trim());
+    const tripId = document.getElementById('tripId').value.trim().toUpperCase();
+    if (!tripId) throw new Error('请填写一个同步码');
+
+    const app = initializeApp(cfg, 'verify-' + Date.now());
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // 匿名登录
+    try {
+      await signInAnonymously(auth);
+      results.push(log(true, '匿名登录', '成功拿到 request.auth —— 新规则要求登录，这一步必须通过'));
+    } catch (e) {
+      results.push(log(false, '匿名登录失败', `${e.code || e.message}<br>控制台 → Authentication → Sign-in method → 启用「匿名」`));
+      throw new Error('停止：没有身份就无法继续测试');
+    }
+
+    // 测试 1：get 单个行程 —— 应当允许
+    try {
+      const snap = await getDoc(doc(db, 'travel_plans', tripId));
+      results.push(log(true, 'get 单个行程（应允许）',
+        snap.exists() ? `读到文档 travel_plans/${tripId}` : `规则放行了，但该同步码下没有文档（换一个存在的同步码可看得更清楚）`));
+    } catch (e) {
+      results.push(log(false, 'get 单个行程被拒绝', `${e.code}<br>这不符合预期，应用会打不开。检查规则里的 <code>allow get</code>`));
+    }
+
+    // 测试 2：list 整个集合 —— 必须拒绝（本轮最关键）
+    try {
+      const qs = await getDocs(collection(db, 'travel_plans'));
+      results.push(log(false, 'list 整个集合竟然成功了',
+        `拉到了 ${qs.size} 份行程！说明规则写成了 <code>allow read</code> 而不是 <code>allow get</code> + <code>allow list: if false</code>。
+         任何人匿名登录后都能把全部行程拖走，请立即修正。`));
+    } catch (e) {
+      results.push(log(e.code === 'permission-denied', 'list 整个集合（必须拒绝）',
+        e.code === 'permission-denied'
+          ? '被规则拒绝 —— 这正是期望结果，无法批量遍历所有行程'
+          : `被拒绝，但错误码是 ${e.code}（预期 permission-denied）`));
+    }
+
+    // 测试 3：无关路径 —— 应当拒绝
+    try {
+      await getDoc(doc(db, '__rules_probe__', 'x'));
+      results.push(log(false, '无关路径竟可读', '默认拒绝没有生效，规则可能还有过宽的 catch-all'));
+    } catch (e) {
+      results.push(log(e.code === 'permission-denied', '无关路径（应拒绝）',
+        `${e.code} —— 未列出的路径默认拒绝，符合预期`));
+    }
+
+  } catch (e) {
+    log(false, '检测中断', e.message);
+  }
+
+  const allPass = results.length >= 4 && results.every(Boolean);
+  const v = document.createElement('div');
+  v.className = 'verdict ' + (allPass ? 'pass' : 'fail');
+  v.textContent = allPass
+    ? '✅ 全部通过：规则已按预期生效，无法批量遍历行程。'
+    : '⚠️ 有未通过项，请看上面每条的说明。';
+  out.appendChild(v);
+  btn.disabled = false; btn.textContent = '重新检测';
+};
+</script>
+</body>
+</html>
