@@ -1,1 +1,12 @@
 .DS_Store
+
+# 依赖
+node_modules/
+
+# 备份产物（可能含完整行程数据，不入库）
+backups/
+
+# Firebase 服务账号私钥 —— 绝对不能提交进这个公开仓库
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+*.serviceaccount.json
