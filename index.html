@@ -690,8 +690,9 @@
             // 云端一直不吭声时（弱网/被墙）也要让用户进得去，不能永远停在“检查中…”
             if (!appRevealed) syncWaitTimer = setTimeout(() => { if (!appRevealed) { console.warn("云端首帧超时，先用本地数据进入"); loadLocalFallback(); } }, CLOUD_PAINT_TIMEOUT_MS);
 
-            syncUnsubscribe = onSnapshot(window.getTripDocRef(reqId), (snap) => {
+            syncUnsubscribe = onSnapshot(window.getTripDocRef(reqId), { includeMetadataChanges: true }, (snap) => {
                 const fromCache = !!(snap.metadata && snap.metadata.fromCache);
+                const pending = !!(snap.metadata && snap.metadata.hasPendingWrites);
                 if (snap.exists()) {
                     let cloudData = window.sanitizeTripData(snap.data());
                     if (!cloudData) {
@@ -713,7 +714,7 @@
                     clearTimeout(syncWaitTimer);
                     tripId = reqId; tripPin = reqPin; localStorage.setItem('trip_sync_id', tripId); localStorage.setItem('trip_sync_pin', tripPin);
                     cloudLocked = false; pinConflictNotified = false;
-                    setSyncBadge(fromCache ? '本地缓存' : '已同步', !fromCache);
+                    setSyncBadge(pending ? '保存中' : (fromCache ? '本地缓存' : '已同步'), !fromCache);
 
                     // 持久化缓存会让同一份数据先后到达两次（缓存帧 + 服务端帧），
                     // 内容没变就只保证外壳露出，不重绘 —— 否则会平白多吃掉一次 contenteditable 焦点。
