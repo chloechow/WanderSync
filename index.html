@@ -2024,22 +2024,30 @@
             if(ev.type === 'meal_options') {
                 const firstOption = ev.options && ev.options.length > 0 ? ev.options[0] : { title: '', link: '', price: '', dishes: '' };
                 window.openModal("编辑餐饮", "修改首选餐厅", [
-                    { id: 'time', label: '时间', value: ev.time }, 
-                    { id: 'title', label: '餐厅名', value: firstOption.title }, 
-                    { id: 'link', label: '链接', value: firstOption.link }, 
-                    { id: 'price', label: '人均', value: firstOption.price }, 
-                    { id: 'dishes', label: '推荐菜', value: firstOption.dishes }
-                ], (v) => { 
-                    ev.time = v.time; if (!ev.options || ev.options.length === 0) ev.options = [{}]; ev.options[0].title = v.title; ev.options[0].link = v.link; ev.options[0].price = v.price; ev.options[0].dishes = v.dishes; day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
+                    { id: 'time', label: '时间', value: ev.time },
+                    { id: 'title', label: '餐厅名', value: firstOption.title },
+                    { id: 'link', label: '链接', value: firstOption.link },
+                    { id: 'price', label: '人均', value: firstOption.price },
+                    { id: 'dishes', label: '推荐菜', value: firstOption.dishes },
+                    { id: 'moveTo', label: '所在日期', type: 'select', options: tripData.days.map(d => ({ value: d.id, text: `Day ${d.id} · ${d.date} ${d.title}` })), value: day.id }
+                ], (v) => {
+                    ev.time = v.time; if (!ev.options || ev.options.length === 0) ev.options = [{}]; ev.options[0].title = v.title; ev.options[0].link = v.link; ev.options[0].price = v.price; ev.options[0].dishes = v.dishes;
+                    if (String(v.moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(v.moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
+                    day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
                 });
             } else {
                 window.openModal("编辑", "", [
-                    { id: 'time', label: '时间', value: ev.time }, 
-                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label }, 
-                    { id: 'title', label: '标题', value: ev.title }, 
-                    { id: 'desc', label: '描述', type: 'textarea', value: ev.desc }, 
-                    { id: 'link', label: '地图链接 (可选)', value: ev.link || '' }
-                ], (v) => { Object.assign(ev, v); day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); }); 
+                    { id: 'time', label: '时间', value: ev.time },
+                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    { id: 'title', label: '标题', value: ev.title },
+                    { id: 'desc', label: '描述', type: 'textarea', value: ev.desc },
+                    { id: 'link', label: '地图链接 (可选)', value: ev.link || '' },
+                    { id: 'moveTo', label: '所在日期', type: 'select', options: tripData.days.map(d => ({ value: d.id, text: `Day ${d.id} · ${d.date} ${d.title}` })), value: day.id }
+                ], (v) => {
+                    const moveTo = v.moveTo; delete v.moveTo; Object.assign(ev, v);
+                    if (String(moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
+                    day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
+                });
             }
         };
 
