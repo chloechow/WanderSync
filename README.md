@@ -8,9 +8,101 @@
 
 ## 目录
 
+- [Service Worker / PWA 离线壳缓存](#service-worker--pwa-离线壳缓存)
 - [Firestore 数据备份](#firestore-数据备份)
 - [部署 Firestore 安全规则 (firestore.rules)](#部署-firestore-安全规则-firestorerules)
 - [切换新规则前必须确认的前置条件](#切换新规则前必须确认的前置条件)
+
+---
+
+## Service Worker / PWA 离线壳缓存
+
+`sw.js` + `manifest.json` 是专门为「iPhone 主屏 App」这个场景做的：iOS
+上「添加到主屏幕」生成的独立 Web App，跟 Safari 标签页完全是两回事——
+存储容器互相隔离（Safari 里的 localStorage 缓存对它毫无意义），系统
+还会激进地杀掉它的进程，导致**每一次点桌面图标都是真正的冷启动**。
+没有 Service Worker 的话，这意味着每次打开都要重新联网下载
+`index.html` + 3 个 CSS 文件 + 字体 + Firebase 模块，这就是那个「每次
+都转圈圈半天」的白屏的根源。
+
+### 缓存了什么，没缓存什么
+
+`sw.js` 只做「App 壳」的离线缓存，缓存范围是显式列出的一份白名单
+（`sw.js` 里的 `PRECACHE_URLS`）：
+
+- `index.html`、`tailwind.min.css`、`fontawesome-subset.css`、
+  `poppins-subset.css`
+- 三个字体子集（`fonts/*.woff2`）
+- `manifest.json`
+
+**明确不缓存、永远直连网络的东西**（`sw.js` 里 `url.origin !==
+self.location.origin` 这一行拦下的）：
+
+- Firebase SDK（`www.gstatic.com`）
+- Firestore 实时同步通道（`firestore.googleapis.com`）
+- 匿名鉴权（`identitytoolkit.googleapis.com`）
+- Gemini API 调用
+
+这些是**跨域**请求，`sw.js` 一律不拦截、直接放行给浏览器原生网络栈。
+这是有意为之：把这些也缓存起来，会制造出"看起来能用，但数据是过期
+的"这种极难排查的状态，得不偿失——缓存只用来保证壳能秒开，行程数据
+永远只信任 Firestore 的实时快照。
+
+导航请求（打开/刷新页面本身）用的是 stale-while-revalidate：先用
+缓存里的 `index.html` 立刻画出界面，同时在后台悄悄发一次网络请求去
+刷新缓存，供下一次启动使用——不会让用户在当前这次打开里等网络。
+
+### 版本更新怎么生效
+
+`sw.js` 顶部的 `SW_VERSION` 常量决定 Cache Storage 的名字
+（`wandersync-shell-v1` 这种）。改了壳资源（CSS/字体/index.html 的
+静态结构）之后，把这个版本号往上加一位，浏览器就会：
+
+1. 装上新版本的 `sw.js`（`install` 事件里重新抓取一遍
+   `PRECACHE_URLS`，写进新版本号的缓存）；
+2. **不会**立刻抢占当前页面（`sw.js` 故意不调用
+   `self.skipWaiting()`）——新版本进入 `waiting` 状态，等用户关掉所有
+   打开的标签页/主屏 App、下一次重新启动时才会 `activate`。iOS 主屏
+   App 反正每次都是冷启动，晚一次启动生效完全不影响体验，换来的是
+   不会在用户还在用的时候把资源从脚下抽走；
+3. `activate` 时会清掉所有旧版本号的缓存（`wandersync-shell-v0` 之类），
+   不会无限堆积。
+
+### `?sw=off`：强制卸载逃生舱
+
+访问地址后面加上 `?sw=off`（比如
+`https://xxx.github.io/WanderSync/?sw=off`），页面会：
+
+1. 注销当前源上所有已注册的 Service Worker；
+2. 删除它建的所有 Cache Storage 缓存；
+3. 去掉 `?sw=off` 参数，原地刷新一次干净页面。
+
+**这个分支跑完之后什么缓存都不剩，接下来的每一次打开都会重新走一遍
+"是否要重新注册 SW" 的正常逻辑**（不是永久关闭），用来处理这几种场景：
+
+- 预览分支（比如某个 `claude/*` 分支）被提升为生产环境部署之后，想
+  确保线上用户看到的不是预览阶段残留的缓存；
+- 怀疑某个问题是 Service Worker 缓存导致的（页面表现跟预期的源码
+  对不上），想验证"排除缓存变量之后问题还在不在"；
+- 本地开发时想每次都拿到最新资源，不想等版本号轮换。
+
+### 怎么在 iPhone 主屏 App 上测试
+
+Service Worker **只在 HTTPS 或 localhost 下工作**，GitHub Pages 天然
+是 HTTPS，可以直接用真机测：
+
+1. 用 Safari 打开线上地址，「分享」→「添加到主屏幕」；
+2. 打开一次主屏图标，确认能正常登录/看到行程（这一步是让 SW 把壳
+   资源缓存进去）；
+3. **完全退出这个主屏 App**（从 App 切换器里上滑关掉，不是按 Home 键
+   切到后台——iOS 对纯粹切到后台的 Web App 不一定会真的杀进程，
+   验证冷启动必须彻底关掉）；
+4. 打开手机的飞行模式（或者关 Wi-Fi + 蜂窝数据），**断网**；
+5. 再点一次主屏图标——如果登录页 / 缓存的行程界面能正常画出来（哪怕
+   云端数据这时候连不上、显示"离线模式"角标），说明 SW 生效了；
+   如果还是长时间白屏，大概率是第 2 步没有先联网打开过一次，或者
+   Service Worker 没注册成功（可以用 Mac Safari 的「开发」菜单远程
+   调试这台 iPhone，看 Application 面板里 Service Worker 的状态）。
 
 ---
 

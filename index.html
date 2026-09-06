@@ -13,6 +13,18 @@
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" crossorigin>
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" crossorigin>
+
+    <!-- PWA / iOS 主屏 App 相关：manifest 提供 background_color 作为
+         iOS 15.4+ 的启动背景（这是消除主屏 App 启动白屏的关键），
+         apple-touch-icon 用于主屏图标，apple-mobile-web-app-capable
+         让它以独立 App 模式（无 Safari 地址栏）启动。 -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#1e293b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WanderSync">
+    <link rel="apple-touch-icon" href="./icons/icon-180.png">
+    <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
     <style>
         :root {
             --primary: #475569;
@@ -2110,6 +2122,50 @@
         };
 
         boot();
+    </script>
+
+    <script>
+        /* Service Worker 注册：只负责把静态壳资源缓存起来，任何失败都
+           不能影响 App 本身——整体包一层 try/catch，失败只 console.warn，
+           不抛出、不阻断任何东西。注册动作放进 window 的 load 事件里，
+           不占用首屏渲染/解析的任何时间，也不会跟上面的启动逻辑抢跑。
+
+           调试/降级出口：访问地址后面加 ?sw=off 会强制注销所有已注册
+           的 Service Worker、清空它建的所有 Cache Storage，然后原地
+           reload 一次干净页面——预览分支升级为生产环境、或怀疑是缓存
+           导致的问题时，用这个不用等版本号轮换。 */
+        (function () {
+            if (!('serviceWorker' in navigator)) return;
+
+            var params = new URLSearchParams(location.search);
+            if (params.get('sw') === 'off') {
+                (async function () {
+                    try {
+                        var regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map(function (r) { return r.unregister(); }));
+                        var keys = await caches.keys();
+                        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                    } catch (e) {
+                        console.warn('Service Worker 强制卸载失败:', e && e.message);
+                    } finally {
+                        params.delete('sw');
+                        var qs = params.toString();
+                        location.replace(location.pathname + (qs ? '?' + qs : '') + location.hash);
+                    }
+                })();
+                return;
+            }
+
+            window.addEventListener('load', function () {
+                try {
+                    navigator.serviceWorker.register('./sw.js').catch(function (e) {
+                        console.warn('Service Worker 注册失败（不影响 App 正常使用）:', e && e.message);
+                    });
+                } catch (e) {
+                    console.warn('Service Worker 注册异常（不影响 App 正常使用）:', e && e.message);
+                }
+            });
+        })();
     </script>
 </body>
 </html>
