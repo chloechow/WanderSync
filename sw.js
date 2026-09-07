@@ -18,7 +18,7 @@
  *     风险，用不着抢着立刻接管。
  */
 
-const SW_VERSION = 'v1';
+const SW_VERSION = 'v2';
 const CACHE_NAME = `wandersync-shell-${SW_VERSION}`;
 
 // 所有路径都用相对路径：GitHub Pages 项目页跑在
