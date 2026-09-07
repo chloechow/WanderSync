@@ -93,6 +93,34 @@ service cloud.firestore {
       // 的说明，PIN 只存在于客户端逻辑里，Firestore 规则拿不到、
       // 也不应该指望靠它做写入保护。
       allow write: if request.auth != null;
+
+      // -----------------------------------------------------------------
+      // 购物清单图片：每张图一个独立文档
+      //
+      // 【为什么必须单独写这一段】
+      // Firestore 的规则「不会」从父文档继承到子集合。上面那条
+      // `match /travel_plans/{tripId}` 只覆盖行程文档本身，**完全不覆盖**
+      // travel_plans/{tripId}/images/{imageId}。不写这一段的话，图片
+      // 的读写会被默认拒绝规则一律挡掉——现象是图片传不上去、也显示
+      // 不出来，但行程本身一切正常，很容易误判成前端 bug。
+      //
+      // 【为什么要把图片挪出主文档】
+      // 原先购物清单照片以 base64 内联在行程文档的 shoppingList[].imgUrl
+      // 里。Firestore 单文档上限 1 MiB，实测该文档已达约 751KB（约 75%），
+      // 再存十几张照片就会永久写不进去。而且每次保存都整份覆写、每个
+      // 在线设备都要重新下载整份。拆出来后每张图各有独立的 1 MiB 额度，
+      // 主文档回落到几十 KB。
+      //
+      // 权限与主文档保持同一套逻辑：允许按 ID 取单张（get），
+      // 禁止列出整个 images 集合（list）。
+      // App 只会按 imageId 精确读取（渲染购物清单时）和写入/删除
+      // （新增、替换、删除购物项时），不需要遍历能力。
+      // -----------------------------------------------------------------
+      match /images/{imageId} {
+        allow get: if request.auth != null;
+        allow list: if false;
+        allow write: if request.auth != null;
+      }
     }
 
     // -------------------------------------------------------------------
@@ -109,6 +137,13 @@ service cloud.firestore {
       allow get: if request.auth != null;
       allow list: if false;
       allow write: if request.auth != null;
+
+      // 与路径一同理，子集合必须显式声明，规则不会自动继承下来。
+      match /images/{imageId} {
+        allow get: if request.auth != null;
+        allow list: if false;
+        allow write: if request.auth != null;
+      }
     }
 
     // -------------------------------------------------------------------
