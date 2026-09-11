@@ -270,7 +270,7 @@
 
         let initializeApp, getApps, getApp;
         let getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged;
-        let doc, setDoc, onSnapshot, deleteDoc;
+        let doc, setDoc, getDoc, onSnapshot, deleteDoc;
         let getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache;
         let coreSdkPromise = null, firestoreSdkPromise = null;
 
@@ -287,7 +287,7 @@
 
         const loadFirestoreSdk = () => firestoreSdkPromise || (firestoreSdkPromise = (async () => {
             const m = await import(FB_BASE + "firebase-firestore.js");
-            ({ doc, setDoc, onSnapshot, deleteDoc, getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } = m);
+            ({ doc, setDoc, getDoc, onSnapshot, deleteDoc, getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } = m);
         })().catch(e => { firestoreSdkPromise = null; throw e; }));
 
         window.sanitizeTripData = (data) => {
@@ -299,8 +299,22 @@
                 data.settings.members = Array.isArray(data.settings.members) && data.settings.members.length > 0 ? data.settings.members : ['成员 A', '成员 B'];
                 
                 data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
-                data.shoppingList = Array.isArray(data.shoppingList) ? data.shoppingList : [];
-                
+                /* 购物清单图片有两种形态，必须同时认：
+                   旧形态 imgUrl 里内联 base64（老版本客户端、导出的备份、还没迁移完的缓存都是这个），
+                   新形态 imgId 指向子集合 travel_plans/{tripId}/images/{imageId}。
+                   这里只做归一化，不做取舍：内联数据一个字节都不能在这里被丢掉。 */
+                data.shoppingList = (Array.isArray(data.shoppingList) ? data.shoppingList : []).map(it => {
+                    if (!it || typeof it !== 'object') return it;
+                    const s = it;
+                    s.imgId = typeof s.imgId === 'string' ? s.imgId.replace(/[^A-Za-z0-9_-]/g, '') : '';   // 自己生成的 ID 只会是这些字符；imgId 会被拼进 HTML 属性，别让导入的脏数据带东西进来
+                    s.imgUrl = typeof s.imgUrl === 'string' ? s.imgUrl : '';
+                    if (s.imgUrl && s.imgUrl.indexOf('data:') !== 0 && s.imgUrl.indexOf('http') !== 0) {
+                        if (s.imgUrl.indexOf('imgref:') === 0 && !s.imgId) s.imgId = s.imgUrl.slice(7);   // 弹窗里的引用写法万一被存进来，捞回 imgId
+                        s.imgUrl = '';
+                    }
+                    return s;
+                });
+
                 if (!Array.isArray(data.days) || data.days.length === 0) {
                     console.warn("自愈机制触发: 重建被损毁的 Days 数组");
                     data.days = [{ id: 1, date: "Day 1", title: "行程", events: [], hotelName: "", hotelLink: "", hotelNote: "" }];
@@ -365,8 +379,179 @@
 
         window.getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
-        window.getTripDocRef = (id) => { 
-            return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id); 
+        window.getTripDocRef = (id) => {
+            return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id);
+        };
+
+        /* ===================== 购物清单图片：拆进子集合 =====================
+           照片原先以 base64 内联在行程文档的 shoppingList[].imgUrl 里。Firestore 单文档硬上限
+           1 MiB，实测该文档已经 751.99 KB（约 75%），再传十几张就会永久写不进去；而且每次保存
+           都要把所有照片重新上传一遍，每台在线设备也要把整份文档重新下载一遍——在外面用流量的
+           时候尤其要命。改成 travel_plans/{tripId}/images/{imageId}，主文档只留引用：
+             · 每张图各有自己的 1 MiB 额度；
+             · 配合已经开着的 persistentLocalCache，图片文档取过一次就落在 IndexedDB 里，
+               行程文档再怎么变都不会再把它重新拉一遍。
+           安全规则（firestore.rules）里 images 子集合是 get + write 放行、list 明确禁止，
+           所以下面只按 imageId 精确读写，永远不遍历这个集合。 */
+        const IMG_UPLOAD_TIMEOUT_MS = 10000;
+        const IMG_FETCH_TIMEOUT_MS = 12000;
+        window.IMG_PLACEHOLDER = "data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23f1f5f9'/%3E%3Ccircle cx='36' cy='35' r='7' fill='%23cbd5e1'/%3E%3Cpath d='M22 68l17-21 11 13 9-10 15 18z' fill='%23cbd5e1'/%3E%3C/svg%3E";
+        window.__imgCache = new Map();      // imageId -> 完整 data URL，一次取回反复渲染都够用
+        const imgFetching = new Map();      // imageId -> 进行中的取回 Promise，避免同一张图并发取多次
+        let imgMigrationDone = false;       // 本次会话已经尝试过迁移（失败也算，避免打成重试循环）
+        let imgMigrationRunning = false;
+
+        window.getTripImageRef = (id, imageId) => {
+            return isBYOD ? doc(db, 'travel_plans', id, 'images', imageId) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id, 'images', imageId);
+        };
+
+        /* 【图片文档 ID 必须由购物项 ID 推导出来，不要改成 crypto.randomUUID()／随机串】
+           这里的幂等性是结构性的，不是靠标志位兜住的：
+             · 迁移重跑、上传超时后的重试、离线队列延迟落地的那次写入，目标都是同一个文档 ID，
+               结果是覆盖，不会长出第二份；随机 ID 会在上面每一种情况下各留一个孤儿文档。
+             · 换图时同 ID 覆盖，旧图自然消失，不需要额外的清理逻辑。
+             · 「迁移成功但主文档保存失败」这种半截状态也因此是可自愈的：下次加载重新迁移会落到
+               同一批 ID 上，原样覆盖即可；随机 ID 的话每次加载都会再堆一批孤儿。
+           唯一要防的是同 ID 冲突，所以新建购物项时会对现有列表查重、迁移时也会在循环里查重。 */
+        window.imageIdForItem = (item, fallbackIdx) => {
+            const raw = item && item.id !== undefined && item.id !== null && item.id !== '' ? String(item.id) : ('n' + fallbackIdx);
+            return 'i' + raw.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
+        };
+
+        window.readTripImage = async (imageId) => {
+            if (!imageId) return '';
+            if (window.__imgCache.has(imageId)) return window.__imgCache.get(imageId);
+            if (imgFetching.has(imageId)) return imgFetching.get(imageId);
+            const task = (async () => {
+                if (!tripId || userSkippedCloud) return '';
+                /* 缓存秒开时这里往往比 Firebase 初始化还早：直接返回空的话图片就永远不会被填上——
+                   而云端首帧如果和缓存一模一样，快照回调会走去重分支不再 render，也就没有第二次机会。
+                   所以这里等的是和启动流程同一个「云端就绪」闸门，而不是自己放弃。 */
+                if (!isCloudConfigured || !user) { if (!(await ensureCloudReady())) return ''; }
+                if (!(await ensureDb())) return '';
+                // getDoc 默认 source 会先问服务端、连不上就回落到本地持久化缓存，所以离线也能取到取过的图
+                const snap = await withTimeout(getDoc(window.getTripImageRef(tripId, imageId)), IMG_FETCH_TIMEOUT_MS, "图片读取");
+                if (!snap || !snap.exists()) return '';
+                const d = snap.data() || {};
+                if (!d.data) return '';
+                const url = String(d.data).indexOf('data:') === 0 ? String(d.data) : `data:${d.mime || 'image/jpeg'};base64,${d.data}`;
+                window.__imgCache.set(imageId, url);
+                return url;
+            })().catch(e => { console.warn("图片读取失败:", e && e.message); return ''; });
+            imgFetching.set(imageId, task);
+            // 失败的不留在表里，下一次渲染还能再试一次
+            task.then(() => imgFetching.delete(imageId), () => imgFetching.delete(imageId));
+            return task;
+        };
+
+        window.putTripImage = async (dataUrl, imageId) => {
+            const m = /^data:([^;,]*);base64,/.exec(dataUrl || '');
+            if (!m) throw new Error("不是合法的 base64 图片数据");
+            if (!imageId) throw new Error("缺少图片 ID");
+            if (!isCloudConfigured || !user || cloudLocked || !tripId) throw new Error("云端未就绪");
+            if (!(await ensureDb())) throw new Error("Firestore 不可用");
+            const mime = m[1] || 'image/jpeg';
+            const payload = dataUrl.slice(m[0].length);
+            /* setDoc 的 Promise 只在服务端确认后才 resolve——离线时它会一直挂着不动。
+               不加超时的话，用户在飞机上/地铁里加一张图，整个「保存商品」的流程就卡死了。
+               超时只是放弃等待：写入仍在离线队列里，而且 ID 是推导出来的，晚到的那次写入
+               和下次重试写的是同一个文档，不会留下孤儿。 */
+            await withTimeout(setDoc(window.getTripImageRef(tripId, imageId), { data: payload, mime, createdAt: Date.now() }), IMG_UPLOAD_TIMEOUT_MS, "图片上传");
+            window.__imgCache.set(imageId, dataUrl);
+            return imageId;
+        };
+
+        window.deleteTripImage = async (imageId) => {
+            if (!imageId) return;
+            window.__imgCache.delete(imageId);
+            try {
+                if (!isCloudConfigured || !user || cloudLocked || !tripId) return;
+                if (!(await ensureDb())) return;
+                await deleteDoc(window.getTripImageRef(tripId, imageId));
+            } catch (e) { console.warn("图片删除失败（不影响商品本身被删除）:", e && e.message); }
+        };
+
+        // 渲染是同步的 innerHTML，取图是异步的：先吐占位图，取回来再填。
+        // 命中内存缓存时 shoppingImgHtml 会直接把 data URL 写进 src，所以重复渲染不会闪也不会重取。
+        window.hydrateImages = (root) => {
+            const scope = root || document;
+            if (!scope.querySelectorAll) return;
+            scope.querySelectorAll('img[data-img-ref]').forEach(el => {
+                if (el.dataset.imgReady === '1') return;
+                const ref = el.getAttribute('data-img-ref');
+                if (!ref) return;
+                const hit = window.__imgCache.get(ref);
+                if (hit) { el.src = hit; el.dataset.imgReady = '1'; return; }
+                window.readTripImage(ref).then(url => { if (url && el.isConnected) { el.src = url; el.dataset.imgReady = '1'; } });
+            });
+        };
+
+        window.shoppingImgHtml = (item) => {
+            const cls = "w-24 h-24 md:w-28 md:h-28 object-cover rounded-2xl flex-shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition-opacity";
+            const inline = (item.imgUrl && (item.imgUrl.indexOf('data:') === 0 || item.imgUrl.indexOf('http') === 0)) ? item.imgUrl : '';
+            if (inline) return `<img src="${inline}" data-img-ready="1" onclick="window.openImageViewer(this.src)" onerror="this.src=window.IMG_PLACEHOLDER" class="${cls}">`;
+            if (item.imgId) {
+                const hit = window.__imgCache.get(item.imgId) || '';
+                return `<img src="${hit || window.IMG_PLACEHOLDER}" ${hit ? 'data-img-ready="1"' : ''} data-img-ref="${item.imgId}" onclick="window.openImageViewer(this.dataset.imgReady === '1' ? this.src : '')" onerror="this.src=window.IMG_PLACEHOLDER" class="${cls}">`;
+            }
+            return `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
+        };
+
+        /* 弹窗回填过来的 imgUrl 有三种：'' / 'imgref:<id>'（原图没动）/ 'data:...'（刚压好的新图）。
+           新图先原样内联到 item 上（这一段在第一个 await 之前同步跑完，所以立刻就能渲染出来），
+           上传被确认之后才换成引用并丢掉 base64——写入没成功之前绝不把用户的照片扔了。 */
+        window.commitShoppingImage = async (item, raw) => {
+            const prevId = item.imgId || '';
+            if (!raw) { item.imgUrl = ''; item.imgId = ''; }
+            else if (raw.indexOf('imgref:') === 0) { item.imgId = raw.slice(7); item.imgUrl = ''; }
+            else if (raw.indexOf('data:') === 0) {
+                item.imgUrl = raw; item.imgId = '';
+                const targetId = window.imageIdForItem(item, 0);
+                try {
+                    await window.putTripImage(raw, targetId);
+                    // 上传期间云端快照可能整份换掉 tripData，落回当前列表里的同 id 对象才不会写进孤儿对象
+                    const live = (tripData && Array.isArray(tripData.shoppingList) ? tripData.shoppingList.find(x => String(x.id) === String(item.id)) : null) || item;
+                    live.imgId = targetId; live.imgUrl = '';
+                    if (live !== item) { item.imgId = targetId; item.imgUrl = ''; }
+                } catch (e) { console.warn("图片上传未确认，先以内联形式保留（下次加载会自动重试迁移）:", e && e.message); }
+            }
+            if (raw) delete item.imgMissing;   // 补回图了，「这张缺图」的标记就该消失
+            // 只有「确实换成了另一张」或者「用户就是要清空」才删旧图：上传失败时 imgId 还是空的，
+            // 这时候删掉旧文档，万一紧接着的 saveToCloud 也失败，云端仍指向那个已被删掉的 ID，两张都没了。
+            if (prevId && prevId !== item.imgId && (item.imgId || !raw)) window.deleteTripImage(prevId);
+            return item;
+        };
+
+        /* 把老数据里内联的 base64 搬进子集合。要求：
+           1) 幂等——ID 由购物项推导，重跑只会覆盖同一批文档，不会长出第二份；
+           2) 不能在鉴权/db 就绪之前跑——下面三道同步检查 + ensureDb 就是这个闸门；
+           3) 半途失败也不能丢图——只有 putTripImage 成功返回之后才清掉那一项的 imgUrl，
+              失败的项原样留着内联数据，行程照常可用，下次加载再试。
+           imgMigrationDone 让一次会话最多尝试一次：迁移内部会 saveToCloud，saveToCloud 又会触发
+           快照 -> unlockApp -> 这里，没有这个闸门会递归；权限被拒之类的持续失败也会被打成死循环。 */
+        window.migrateInlineImages = async () => {
+            if (imgMigrationDone || imgMigrationRunning) return false;
+            if (!tripData || !Array.isArray(tripData.shoppingList)) return false;
+            const pending = [];
+            tripData.shoppingList.forEach((it, idx) => { if (it && typeof it.imgUrl === 'string' && it.imgUrl.indexOf('data:') === 0) pending.push({ it, idx }); });
+            if (pending.length === 0) return false;                                  // 没东西要搬，不占用这次机会
+            if (!isCloudConfigured || !user || cloudLocked || !tripId) return false;  // 没就绪就直接让给下一次
+            imgMigrationRunning = true;                                              // 同步占位，挡住并发的第二次调用
+            let moved = 0;
+            try {
+                if (!(await ensureDb())) return false;
+                imgMigrationDone = true;
+                const used = {};
+                for (const { it, idx } of pending) {
+                    let id = window.imageIdForItem(it, idx);
+                    if (used[id]) id = id + '_' + idx;                                 // 万一老数据里有重复 id，别让两项共用一张图
+                    used[id] = true;
+                    try { await window.putTripImage(it.imgUrl, id); it.imgId = id; it.imgUrl = ''; moved++; }
+                    catch (e) { console.warn("图片迁移失败，保留内联数据:", e && e.message); }
+                }
+            } finally { imgMigrationRunning = false; }
+            if (moved > 0) { await window.saveToCloud(); window.render(); }
+            return moved > 0;
         };
 
         window.saveToCloud = async () => {
@@ -536,7 +721,9 @@
             if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
         };
 
-        const unlockApp = () => { revealApp(); refreshAppChrome(); window.render(); };
+        // 迁移挂在这里：所有加载路径都会经过 unlockApp，而 migrateInlineImages 自己会在
+        // 鉴权/db 没就绪时原地返回，所以不需要动启动状态机，也不需要碰快照回调里的徽标/去重逻辑。
+        const unlockApp = () => { revealApp(); refreshAppChrome(); window.render(); window.migrateInlineImages().catch(e => console.warn("图片迁移异常:", e && e.message)); };
 
         window.deleteEntireTrip = async () => {
             if(confirm("🚨 危险操作：确定要彻底销毁当前同步码关联的所有行程数据吗？\n删除后云端和本地均无法恢复！")) {
@@ -603,10 +790,20 @@
                     tripPin = finalPin;
                     localStorage.setItem('trip_sync_id', tripId);
                     localStorage.setItem('trip_sync_pin', tripPin);
+                    /* 备份文件里的图片是内联的 base64，导入时要反向拆进子集合。
+                       换了新行程，缓存和迁移闸门都要重置；先迁移再保存，这样这份行程的第一次写云端
+                       就已经是「不带 base64」的小文档了。迁移跑不起来（离线等）也不丢图——
+                       saveToCloud 会把内联数据原样存下来，下次加载再迁移。 */
+                    imgMigrationDone = false; imgMigrationRunning = false; window.__imgCache.clear();
+                    await window.migrateInlineImages().catch(e => console.warn("导入时迁移图片失败:", e && e.message));
                     await window.saveToCloud();
                     unlockApp();
-                    
-                    alert(`导入成功！新行程已成功部署到云端同步码: ${tripId}`);
+
+                    // 备份如果是「缺图导出」，必须在导入这一刻就告诉用户，而不是等他哪天去翻照片才发现
+                    const shortBy = parseInt(sanitized.imagesIncomplete) || (sanitized.shoppingList || []).filter(it => it && it.imgMissing).length;
+                    alert(`导入成功！新行程已成功部署到云端同步码: ${tripId}` + (shortBy > 0 ? `\n\n⚠️ 注意：这份备份本身就缺 ${shortBy} 张商品图片（导出时没能读到）。相关商品在清单里会显示为空图，需要重新上传。` : ''));
+                    // 已经当面告知过了，标记就不必再跟着这份行程长期留在云端；重新传图时 commitShoppingImage 也会清掉
+                    if (shortBy > 0) { delete tripData.imagesIncomplete; (tripData.shoppingList || []).forEach(it => { if (it) delete it.imgMissing; }); window.saveToCloud(); }
                 } catch (err) {
                     console.error("JSON 导入错误:", err);
                     alert("导入失败：文件读取错误或并非标准的 JSON 备份格式。");
@@ -799,11 +996,40 @@
             } catch(err) { console.error("PDF导出失败:", err); alert("PDF导出异常：" + err.message); }
         };
 
-        window.exportItineraryJSON = () => {
+        /* 图片挪进子集合之后，行程文档里只剩引用了。但 JSON 导出是用户唯一的整份备份手段，
+           一份没有图片的备份是坏备份——所以导出前必须把图片重新内联回来。
+           开着 persistentLocalCache，取过的图都在 IndexedDB 里，断网状态下多数也能照常取到，
+           真正会失败的只有「本地没缓存 + 当前又够不着云端」这一种，先老老实实一张张试。 */
+        window.exportItineraryJSON = async () => {
+          try {
             if (!tripData) return;
-            const url = URL.createObjectURL(new Blob([JSON.stringify(tripData, null, 2)], { type: "application/json;charset=utf-8;" }));
-            const link = document.createElement("a"); link.href = url; link.download = (tripData.tripName || "WanderSync") + "_备份数据.json";
+            const payload = JSON.parse(JSON.stringify(tripData));
+            delete payload.imagesIncomplete;
+            const missing = [];
+            if (Array.isArray(payload.shoppingList)) {
+                for (const it of payload.shoppingList) {
+                    if (!it || typeof it !== 'object') continue;
+                    delete it.imgMissing;
+                    if (!it.imgId) continue;
+                    if (typeof it.imgUrl === 'string' && it.imgUrl.indexOf('data:') === 0) continue;   // 还没迁移的，本来就自带图
+                    const inlined = await window.readTripImage(it.imgId);
+                    if (inlined) it.imgUrl = inlined;
+                    else { it.imgMissing = true; missing.push(it.name || it.imgId); }   // 引用留着，但要在文件里留下「这张缺了」的证据
+                }
+            }
+            /* 真有取不到的：既不能替用户决定放弃（人可能正赶飞机、酒店网烂得要命，
+               缺图的备份也远好过没备份），也不能默默给一份看起来正常、其实缺图的文件——
+               后者是最坏的结果，它让人以为自己有一份完整备份。所以报出张数让用户自己选，
+               并且真导出的话，文件本身必须带着「我不完整」的标记，导入时还会再提醒一次。 */
+            if (missing.length > 0) {
+                const go = confirm(`⚠️ 有 ${missing.length} 张商品图片读取不到（本地没有缓存，且当前连不上云端）。\n\n缺图商品：${missing.slice(0, 5).join('、')}${missing.length > 5 ? ' 等' : ''}\n\n【确定】= 仍然导出（缺 ${missing.length} 张图片）：文件会明确标记缺哪几项，导入时也会再提醒。\n【取消】= 放弃本次导出，等能连上云端时再导一份完整的。`);
+                if (!go) return;
+                payload.imagesIncomplete = missing.length;
+            }
+            const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8;" }));
+            const link = document.createElement("a"); link.href = url; link.download = (tripData.tripName || "WanderSync") + "_备份数据" + (missing.length > 0 ? `_缺${missing.length}张图` : '') + ".json";
             document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url);
+          } catch (err) { console.error("JSON导出失败:", err); alert("JSON导出异常：" + err.message); }
         };
 
         window.closeModal = () => { const m = document.getElementById('custom-modal'); m.classList.remove('active'); setTimeout(() => { m.classList.add('hidden'); }, 200); };
@@ -818,12 +1044,14 @@
                     else if (f.type === 'info') inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
                     else if (f.type === 'textarea') inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
                     else if (f.type === 'model_select') inputHtml = `<div class="flex gap-2"><select id="f-${f.id}" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="${f.value || 'gemini-3.5-flash'}">${f.value || 'gemini-3.5-flash'}</option><option value="gemini-3.5-flash">gemini-3.5-flash</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select><button type="button" onclick="window.fetchGeminiModels('f-${f.keyRef}', 'f-${f.id}')" class="px-4 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl text-xs font-bold hover:bg-blue-100 transition whitespace-nowrap shadow-sm">获取列表</button></div>`;
-                    else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${f.value ? `<img src="${f.value}" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
+                    // 图片字段的值有三种：'' / 'imgref:<id>'（子集合里的原图，异步填）/ 'data:...'（刚压好的新图）
+                    else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${String(f.value || '').indexOf('imgref:') === 0 ? `<img src="${window.IMG_PLACEHOLDER}" data-img-ref="${String(f.value).slice(7)}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : (f.value ? `<img src="${f.value}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`)}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
                     wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
                 }
                 content.appendChild(wrap);
             });
+            window.hydrateImages(content);
             document.getElementById('modal-footer').innerHTML = `${onDelete ? `<button onclick="document.getElementById('modal-delete-btn').click()" class="px-4 py-3.5 rounded-xl bg-red-50 text-red-500 text-sm font-bold hover:bg-red-100 transition-colors flex-shrink-0 shadow-sm"><i class="fas fa-trash"></i></button><button id="modal-delete-btn" class="hidden"></button>` : ''}<div class="flex flex-1 gap-3 justify-end"><button onclick="window.closeModal()" class="flex-1 py-3.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors shadow-sm">取消</button><button id="modal-confirm-btn" class="flex-1 py-3.5 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 shadow-sm transition-colors">确认保存</button></div>`;
             if (onDelete) document.getElementById('modal-delete-btn').onclick = () => { onDelete(); window.closeModal(); };
             document.getElementById('modal-confirm-btn').onclick = () => { const vals = {}; fields.forEach(f => { if(f.type !== 'html') { const el = document.getElementById(`f-${f.id}`); if(el) vals[f.id] = el.value; } }); if(onConfirm && onConfirm(vals) === false) return; window.closeModal(); };
@@ -864,7 +1092,14 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                 
-                    const base64Str = canvas.toDataURL('image/jpeg', 0.6);
+                    /* WebP 同画质下一般比 JPEG 小 30% 左右，但不能无脑用：
+                       Safari 的 canvas 会「解码」WebP 很多年之后才学会「编码」WebP，
+                       不支持编码的时候 toDataURL('image/webp') 不会报错，而是静默返回一张 PNG
+                       ——那比现在的 JPEG 还大。所以必须验返回值的前缀，并且只在确实更小时才采用。 */
+                    const jpgStr = canvas.toDataURL('image/jpeg', 0.6);
+                    let webpStr = '';
+                    try { webpStr = canvas.toDataURL('image/webp', 0.7) || ''; } catch (e) { webpStr = ''; }
+                    const base64Str = (webpStr.indexOf('data:image/webp') === 0 && webpStr.length < jpgStr.length) ? webpStr : jpgStr;
                     hiddenEl.value = base64Str;
                     previewEl.innerHTML = `<img src="${base64Str}" class="w-full h-full object-cover">`;
                 };
@@ -1104,7 +1339,8 @@
 
                 itemsInCat.forEach(({ item, originalIdx }) => {
                     const itemDiv = document.createElement('div');
-                    const imgHtml = item.imgUrl ? `<img src="${item.imgUrl}" onclick="window.openImageViewer('${item.imgUrl}')" onerror="this.src='https://via.placeholder.com/150?text=Error'" class="w-24 h-24 md:w-28 md:h-28 object-cover rounded-2xl flex-shrink-0 border border-slate-100 cursor-pointer hover:opacity-80 transition-opacity">` : `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
+                    // 引用形态的图片先出占位图、渲染完再异步填；顺带不再把几十 KB 的 base64 塞进 onclick 属性里
+                    const imgHtml = window.shoppingImgHtml(item);
                     const boughtClass = item.bought ? 'opacity-60 grayscale bg-slate-50' : 'bg-slate-50/40';
                     const boughtBtn = item.bought ? `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold w-full mt-2 transition-colors">已购买</button>` : `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold hover:bg-slate-50 w-full mt-2 transition-colors flex items-center justify-center"><i class="fas fa-check text-blue-500 mr-1.5"></i> 标记已买</button>`;
 
@@ -1132,6 +1368,8 @@
                     gridContainer.appendChild(itemDiv);
                 });
             });
+
+            window.hydrateImages(container);
         };
 
         window.renderExpenses = () => {
@@ -1328,8 +1566,15 @@
             ], (v) => {
                 if(!v.name) { alert("商品名称为必填项"); return false; }
                 if(!tripData.shoppingList) tripData.shoppingList = [];
-                tripData.shoppingList.push({ id: Date.now(), ...v, bought: false });
-                window.saveToCloud(); window.render();
+                const raw = v.imgUrl; delete v.imgUrl;
+                // 图片文档 ID 由商品 id 推导，所以这里必须保证 id 在本清单内唯一（同一毫秒连点两次也不能撞）
+                let newId = Date.now(); while (tripData.shoppingList.some(x => x && String(x.id) === String(newId))) newId++;
+                const item = { id: newId, ...v, imgUrl: '', imgId: '', bought: false };
+                tripData.shoppingList.push(item);
+                // commitShoppingImage 在第一个 await 之前就把 base64 挂到 item 上了，所以这次 render 立刻能看到图
+                const committing = window.commitShoppingImage(item, raw);
+                window.render();
+                committing.then(() => { window.saveToCloud(); window.render(); });
             });
         };
 
@@ -1340,16 +1585,21 @@
                 { id: 'category', label: '所属分类', type: 'select', options: ['美妆护肤', '服饰鞋包', '零食手信', '数码电子', '其他'], value: item.category || '其他' },
                 { id: 'source', label: '来源/种草渠道', type: 'select', options: ['小红书', '微博', '抖音', 'B站', '朋友推荐', '代购', '其他'], value: item.source },
                 { id: 'price', label: '参考价', value: item.price },
-                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgUrl || '' },
+                { id: 'imgUrl', type: 'image', label: '商品图片', value: item.imgId ? ('imgref:' + item.imgId) : (item.imgUrl || '') },
                 { id: 'note', label: '备注', type: 'textarea', value: item.note }
             ], (v) => {
                 if(!v.name) { alert("商品名称为必填项"); return false; }
-                Object.assign(item, v); window.saveToCloud(); window.render();
+                const raw = v.imgUrl; delete v.imgUrl;      // imgUrl 走 commitShoppingImage，不能让它直接盖回 item
+                Object.assign(item, v);
+                const committing = window.commitShoppingImage(item, raw);
+                window.render();
+                committing.then(() => { window.saveToCloud(); window.render(); });
             });
         };
 
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; window.saveToCloud(); window.render(); };
-        window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { tripData.shoppingList.splice(idx, 1); window.saveToCloud(); window.render(); }); };
+        // 顺手把子集合里的图片文档也删掉，避免孤儿图片一直占着空间；删图失败绝不能挡住删商品本身
+        window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { const gone = tripData.shoppingList.splice(idx, 1)[0]; if (gone && gone.imgId) window.deleteTripImage(gone.imgId).catch(e => console.warn("图片删除异常:", e && e.message)); window.saveToCloud(); window.render(); }); };
 
         window.askGemini = async (payload, apiKey, modelName = "gemini-3.5-flash", isJson = false) => {
             const model = modelName || "gemini-3.5-flash";
@@ -1598,6 +1848,7 @@
                             source: '✨ AI 推荐', 
                             price: item.price, 
                             imgUrl: '', 
+                            imgId: '', 
                             note: item.note, 
                             bought: false 
                         }); 
