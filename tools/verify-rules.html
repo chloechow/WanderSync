@@ -56,25 +56,25 @@ const log = (ok, title, detail) => {
   return ok;
 };
 
-// Firebase 控制台给的是 JS 对象字面量（键名不带引号），不是严格 JSON。
-// 这里同时接受三种粘贴方式：纯 JSON、裸对象字面量、以及整段
-// `const firebaseConfig = {...};` 声明。
+// The Firebase console gives a JS object literal (unquoted keys), not
+// strict JSON. Accept all three paste forms: plain JSON, a bare object
+// literal, or a full `const firebaseConfig = {...};` declaration.
 function parseConfig(raw) {
   let s = (raw || '').trim();
   if (!s) throw new Error('请先粘贴 Firebase 配置');
 
-  // 从网页/文档复制常会把直引号变成弯引号（“ ” ‘ ’），
-  // 它们在 JS 里不是合法的字符串定界符，必须先归一化。
-  // 同时把全角逗号/冒号换成半角。
+  // Copying from a web page/document often turns straight quotes into curly
+  // ones, which aren't valid JS string delimiters, so normalize those first.
+  // Also normalize fullwidth commas/colons to their ASCII equivalents.
   s = s.replace(/[\u201C\u201D\u2033]/g, '"')
        .replace(/[\u2018\u2019\u2032]/g, "'")
        .replace(/\uFF0C/g, ',')
        .replace(/\uFF1A/g, ':');
 
-  // 去掉 `const firebaseConfig =` / `var app =` 之类的前缀和结尾分号
+  // Strip a `const firebaseConfig =` / `var app =`-style prefix and any trailing semicolon
   s = s.replace(/^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*/, '').replace(/;\s*$/, '');
 
-  // 只取第一个 { 到最后一个 } 之间的部分，容忍前后多余内容
+  // Keep only the first { through the last }, tolerating extra surrounding content
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
   if (a === -1 || b === -1 || b < a) {
     throw new Error('没找到配置对象。请把控制台里 firebaseConfig = { ... } 的花括号连同内容一起粘进来。');
@@ -83,10 +83,10 @@ function parseConfig(raw) {
 
   let cfg;
   try {
-    cfg = JSON.parse(s);            // 严格 JSON
+    cfg = JSON.parse(s);            // strict JSON
   } catch (_) {
     try {
-      cfg = new Function('return (' + s + ')')();   // 裸对象字面量
+      cfg = new Function('return (' + s + ')')();   // bare object literal
     } catch (e2) {
       throw new Error('配置解析失败：' + e2.message + '。请确认花括号成对、没有截断。');
     }
@@ -112,7 +112,7 @@ document.getElementById('run').onclick = async () => {
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // 匿名登录
+    // Anonymous sign-in
     try {
       await signInAnonymously(auth);
       results.push(log(true, '匿名登录', '成功拿到 request.auth —— 新规则要求登录，这一步必须通过'));
@@ -121,7 +121,7 @@ document.getElementById('run').onclick = async () => {
       throw new Error('停止：没有身份就无法继续测试');
     }
 
-    // 测试 1：get 单个行程 —— 应当允许
+    // Test 1: get a single trip — should be allowed
     try {
       const snap = await getDoc(doc(db, 'travel_plans', tripId));
       results.push(log(true, 'get 单个行程（应允许）',
@@ -130,7 +130,7 @@ document.getElementById('run').onclick = async () => {
       results.push(log(false, 'get 单个行程被拒绝', `${e.code}<br>这不符合预期，应用会打不开。检查规则里的 <code>allow get</code>`));
     }
 
-    // 测试 2：list 整个集合 —— 必须拒绝（本轮最关键）
+    // Test 2: list the whole collection — must be denied (the most important check this round)
     try {
       const qs = await getDocs(collection(db, 'travel_plans'));
       results.push(log(false, 'list 整个集合竟然成功了',
@@ -143,10 +143,11 @@ document.getElementById('run').onclick = async () => {
           : `被拒绝，但错误码是 ${e.code}（预期 permission-denied）`));
     }
 
-    // 测试 3：无关路径 —— 应当拒绝
-    // 注意：路径名不能用 __xx__ 形式，Firestore 保留该格式，
-    // 客户端 SDK 会在发请求前本地校验失败（invalid-argument），
-    // 请求根本到不了服务器，等于什么都没测到。
+    // Test 3: an unrelated path — should be denied
+    // Note: the path name can't use the __xx__ form — Firestore reserves it,
+    // so the client SDK fails local validation before even sending the
+    // request (invalid-argument), and the request never reaches the server,
+    // so this would test nothing.
     try {
       await getDoc(doc(db, 'probe_not_in_rules', 'x'));
       results.push(log(false, '无关路径竟可读',

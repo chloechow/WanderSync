@@ -14,10 +14,10 @@
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" crossorigin>
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" crossorigin>
 
-    <!-- PWA / iOS 主屏 App 相关：manifest 提供 background_color 作为
-         iOS 15.4+ 的启动背景（这是消除主屏 App 启动白屏的关键），
-         apple-touch-icon 用于主屏图标，apple-mobile-web-app-capable
-         让它以独立 App 模式（无 Safari 地址栏）启动。 -->
+    <!-- PWA / iOS home-screen: manifest's background_color is the iOS 15.4+
+         launch background (key to avoiding a white flash on cold start);
+         apple-touch-icon is the home-screen icon; apple-mobile-web-app-capable
+         launches it as a standalone app (no Safari address bar). -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#1e293b">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -41,9 +41,9 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background-color: var(--bg); color: var(--text-main); -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
         .font-poppins { font-family: 'Poppins', sans-serif; }
 
-        /* tailwind.min.css 是 purge 过的构建产物，只含原始 HTML 出现过的类名。
-           去掉全屏 backdrop-blur 后新用到的这两档不透明度不在里面，必须在此补上，
-           否则遮罩会变成完全透明（背景直接漏出来）。 */
+        /* tailwind.min.css is a purged build containing only classes already
+           used in the original HTML. These two opacity variants are newly
+           needed and missing from it, so they're added by hand here. */
         .bg-slate-800\/60 { background-color: rgb(30 41 59 / 0.6); }
         .bg-slate-900\/70 { background-color: rgb(15 23 42 / 0.7); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -261,8 +261,10 @@
     <div id="print-area" class="hidden w-full max-w-4xl mx-auto text-black p-4 md:p-8"></div>
 
     <script type="module">
-        /* Firebase SDK 改为按需动态加载：登录页由静态 HTML 直接渲染，不再等待任何 SDK 下载。
-           firebase-firestore.js 体积最大且渲染登录页完全用不到，故与 app/auth 分开加载。 */
+        /* Firebase SDKs load on demand: the login screen renders directly from static
+           HTML without waiting on any SDK download. firebase-firestore.js is by far the
+           largest and is never needed to render login, so it loads separately from
+           app/auth. */
         const FB_BASE = "https://www.gstatic.com/firebasejs/11.6.1/";
         const SDK_TIMEOUT_MS = 12000;
         const AUTH_TIMEOUT_MS = 12000;
@@ -299,17 +301,19 @@
                 data.settings.members = Array.isArray(data.settings.members) && data.settings.members.length > 0 ? data.settings.members : ['成员 A', '成员 B'];
                 
                 data.expenses = Array.isArray(data.expenses) ? data.expenses : [];
-                /* 购物清单图片有两种形态，必须同时认：
-                   旧形态 imgUrl 里内联 base64（老版本客户端、导出的备份、还没迁移完的缓存都是这个），
-                   新形态 imgId 指向子集合 travel_plans/{tripId}/images/{imageId}。
-                   这里只做归一化，不做取舍：内联数据一个字节都不能在这里被丢掉。 */
+                /* Shopping-list images come in two shapes and both must be recognized:
+                   the legacy shape has base64 inlined in imgUrl (older clients, exported
+                   backups, caches not yet migrated); the new shape has imgId pointing at
+                   the travel_plans/{tripId}/images/{imageId} subcollection. This only
+                   normalizes the shape — it never discards data, not a single byte of
+                   inline data is dropped here. */
                 data.shoppingList = (Array.isArray(data.shoppingList) ? data.shoppingList : []).map(it => {
                     if (!it || typeof it !== 'object') return it;
                     const s = it;
-                    s.imgId = typeof s.imgId === 'string' ? s.imgId.replace(/[^A-Za-z0-9_-]/g, '') : '';   // 自己生成的 ID 只会是这些字符；imgId 会被拼进 HTML 属性，别让导入的脏数据带东西进来
+                    s.imgId = typeof s.imgId === 'string' ? s.imgId.replace(/[^A-Za-z0-9_-]/g, '') : '';   // self-generated IDs only ever use these chars; imgId gets interpolated into an HTML attribute, so strip anything imported/dirty data might carry
                     s.imgUrl = typeof s.imgUrl === 'string' ? s.imgUrl : '';
                     if (s.imgUrl && s.imgUrl.indexOf('data:') !== 0 && s.imgUrl.indexOf('http') !== 0) {
-                        if (s.imgUrl.indexOf('imgref:') === 0 && !s.imgId) s.imgId = s.imgUrl.slice(7);   // 弹窗里的引用写法万一被存进来，捞回 imgId
+                        if (s.imgUrl.indexOf('imgref:') === 0 && !s.imgId) s.imgId = s.imgUrl.slice(7);   // recover imgId if the modal's ref notation ended up stored here
                         s.imgUrl = '';
                     }
                     return s;
@@ -357,16 +361,16 @@
         let app, auth, db;
         let isCloudConfigured = false;
         let isBYOD = false; 
-        let appRevealed = false;        // App 外壳是否已经露出（缓存秒开 / 云端首帧 / 离线兜底 都会置 true）
-        let cloudLocked = false;        // 云端密码已变更等情况下停止写云端，只写本地
-        let userSkippedCloud = false;   // 用户在配置页主动选择“离线沙盒”
-        let offlineEntryArmed = false;  // 云端连不上时，再点一次按钮才离线进入（不静默降级）
+        let appRevealed = false;        // whether the app shell has been revealed (cache fast-paint / first cloud frame / offline fallback all set this)
+        let cloudLocked = false;        // stop writing to the cloud (e.g. cloud PIN changed) while still saving locally
+        let userSkippedCloud = false;   // user explicitly chose "offline sandbox" on the config screen
+        let offlineEntryArmed = false;  // when the cloud is unreachable, require a second button press before entering offline (no silent fallback)
         let pinConflictNotified = false;
-        let lastSnapshotJson = null;    // 上一帧快照的序列化结果，用于跳过重复 render
+        let lastSnapshotJson = null;    // serialized form of the last snapshot, used to skip redundant renders
         let syncWaitTimer = null;
         let cloudReadyPromise = null;
         let authReadyPromise = null;
-        let cloudSdkBlocked = false;    // SDK 下载不通（被墙/断网），与“配置写错了”区分开
+        let cloudSdkBlocked = false;    // SDK failed to load (network/firewall) as opposed to a bad config
         let offlineEntryFor = null;
         let tripId = localStorage.getItem('trip_sync_id') || null;
         let tripPin = localStorage.getItem('trip_sync_pin') || "";
@@ -383,36 +387,43 @@
             return isBYOD ? doc(db, 'travel_plans', id) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id);
         };
 
-        /* ===================== 购物清单图片：拆进子集合 =====================
-           照片原先以 base64 内联在行程文档的 shoppingList[].imgUrl 里。Firestore 单文档硬上限
-           1 MiB，实测该文档已经 751.99 KB（约 75%），再传十几张就会永久写不进去；而且每次保存
-           都要把所有照片重新上传一遍，每台在线设备也要把整份文档重新下载一遍——在外面用流量的
-           时候尤其要命。改成 travel_plans/{tripId}/images/{imageId}，主文档只留引用：
-             · 每张图各有自己的 1 MiB 额度；
-             · 配合已经开着的 persistentLocalCache，图片文档取过一次就落在 IndexedDB 里，
-               行程文档再怎么变都不会再把它重新拉一遍。
-           安全规则（firestore.rules）里 images 子集合是 get + write 放行、list 明确禁止，
-           所以下面只按 imageId 精确读写，永远不遍历这个集合。 */
+        /* ===================== Shopping-list images: split into a subcollection =====================
+           Photos used to be inlined as base64 in the trip doc's shoppingList[].imgUrl.
+           Firestore's hard 1 MiB per-document limit meant that document was already at ~75%
+           (751.99 KB measured), a dozen more photos would permanently fail to save, and every
+           save re-uploaded every photo while every online device re-downloaded the whole
+           document — brutal on mobile data. Moving to travel_plans/{tripId}/images/{imageId}
+           leaves only a reference in the main doc:
+             - each image gets its own 1 MiB budget;
+             - with persistentLocalCache already on, an image doc fetched once lands in
+               IndexedDB and is never re-fetched just because the trip doc changed.
+           firestore.rules allows get + write but explicitly denies list on the images
+           subcollection, so this code only ever reads/writes by exact imageId, never lists it. */
         const IMG_UPLOAD_TIMEOUT_MS = 10000;
         const IMG_FETCH_TIMEOUT_MS = 12000;
         window.IMG_PLACEHOLDER = "data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' fill='%23f1f5f9'/%3E%3Ccircle cx='36' cy='35' r='7' fill='%23cbd5e1'/%3E%3Cpath d='M22 68l17-21 11 13 9-10 15 18z' fill='%23cbd5e1'/%3E%3C/svg%3E";
-        window.__imgCache = new Map();      // imageId -> 完整 data URL，一次取回反复渲染都够用
-        const imgFetching = new Map();      // imageId -> 进行中的取回 Promise，避免同一张图并发取多次
-        let imgMigrationDone = false;       // 本次会话已经尝试过迁移（失败也算，避免打成重试循环）
+        window.__imgCache = new Map();      // imageId -> full data URL; fetched once, reused across renders
+        const imgFetching = new Map();      // imageId -> in-flight fetch Promise, so concurrent renders don't double-fetch
+        let imgMigrationDone = false;       // migration attempted once per session (even on failure, to avoid a retry loop)
         let imgMigrationRunning = false;
 
         window.getTripImageRef = (id, imageId) => {
             return isBYOD ? doc(db, 'travel_plans', id, 'images', imageId) : doc(db, 'artifacts', window.getAppId(), 'public', 'data', 'travel_plans', id, 'images', imageId);
         };
 
-        /* 【图片文档 ID 必须由购物项 ID 推导出来，不要改成 crypto.randomUUID()／随机串】
-           这里的幂等性是结构性的，不是靠标志位兜住的：
-             · 迁移重跑、上传超时后的重试、离线队列延迟落地的那次写入，目标都是同一个文档 ID，
-               结果是覆盖，不会长出第二份；随机 ID 会在上面每一种情况下各留一个孤儿文档。
-             · 换图时同 ID 覆盖，旧图自然消失，不需要额外的清理逻辑。
-             · 「迁移成功但主文档保存失败」这种半截状态也因此是可自愈的：下次加载重新迁移会落到
-               同一批 ID 上，原样覆盖即可；随机 ID 的话每次加载都会再堆一批孤儿。
-           唯一要防的是同 ID 冲突，所以新建购物项时会对现有列表查重、迁移时也会在循环里查重。 */
+        /* [The image doc ID MUST be derived from the shopping item's ID — do not switch
+           this to crypto.randomUUID() or any random string.] Idempotence here is
+           structural, not flag-guarded:
+             - a re-run migration, a retried upload after a timeout, and a delayed offline
+               write all target the same doc ID, so they overwrite instead of multiplying;
+               a random ID would leave an orphan document in every one of those cases.
+             - replacing an image overwrites the same ID, so the old one just disappears —
+               no separate cleanup needed.
+             - a half-finished state ("migration succeeded but saving the main doc failed")
+               is self-healing: the next load re-migrates onto the same IDs and overwrites
+               cleanly; a random ID would pile up a fresh set of orphans on every load.
+           The only thing to guard against is an ID collision, so new items are checked
+           against the existing list, and migration checks within its own loop too. */
         window.imageIdForItem = (item, fallbackIdx) => {
             const raw = item && item.id !== undefined && item.id !== null && item.id !== '' ? String(item.id) : ('n' + fallbackIdx);
             return 'i' + raw.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
@@ -424,12 +435,15 @@
             if (imgFetching.has(imageId)) return imgFetching.get(imageId);
             const task = (async () => {
                 if (!tripId || userSkippedCloud) return '';
-                /* 缓存秒开时这里往往比 Firebase 初始化还早：直接返回空的话图片就永远不会被填上——
-                   而云端首帧如果和缓存一模一样，快照回调会走去重分支不再 render，也就没有第二次机会。
-                   所以这里等的是和启动流程同一个「云端就绪」闸门，而不是自己放弃。 */
+                /* This can run before Firebase finishes initializing, on a cache fast-paint —
+                   returning empty right away would mean the image never gets filled in,
+                   since if the first cloud frame matches the cache exactly, the snapshot
+                   handler's dedup branch skips re-rendering and there's no second chance.
+                   So this waits on the same "cloud ready" gate as the startup flow instead
+                   of giving up on its own. */
                 if (!isCloudConfigured || !user) { if (!(await ensureCloudReady())) return ''; }
                 if (!(await ensureDb())) return '';
-                // getDoc 默认 source 会先问服务端、连不上就回落到本地持久化缓存，所以离线也能取到取过的图
+                // getDoc's default source tries the server first and falls back to the persistent local cache, so a previously-fetched image is still available offline
                 const snap = await withTimeout(getDoc(window.getTripImageRef(tripId, imageId)), IMG_FETCH_TIMEOUT_MS, "图片读取");
                 if (!snap || !snap.exists()) return '';
                 const d = snap.data() || {};
@@ -439,7 +453,7 @@
                 return url;
             })().catch(e => { console.warn("图片读取失败:", e && e.message); return ''; });
             imgFetching.set(imageId, task);
-            // 失败的不留在表里，下一次渲染还能再试一次
+            // remove from the in-flight map on failure too, so the next render can retry
             task.then(() => imgFetching.delete(imageId), () => imgFetching.delete(imageId));
             return task;
         };
@@ -452,10 +466,12 @@
             if (!(await ensureDb())) throw new Error("Firestore 不可用");
             const mime = m[1] || 'image/jpeg';
             const payload = dataUrl.slice(m[0].length);
-            /* setDoc 的 Promise 只在服务端确认后才 resolve——离线时它会一直挂着不动。
-               不加超时的话，用户在飞机上/地铁里加一张图，整个「保存商品」的流程就卡死了。
-               超时只是放弃等待：写入仍在离线队列里，而且 ID 是推导出来的，晚到的那次写入
-               和下次重试写的是同一个文档，不会留下孤儿。 */
+            /* setDoc's Promise only resolves once the server confirms the write — while
+               offline it just hangs forever. Without a timeout, a user adding a photo on
+               a plane or the subway would have the entire "save item" flow freeze. The
+               timeout only gives up waiting: the write is still queued offline, and since
+               the ID is derived (not random), whenever it does land it's the same document
+               a retry would target — no orphan is created. */
             await withTimeout(setDoc(window.getTripImageRef(tripId, imageId), { data: payload, mime, createdAt: Date.now() }), IMG_UPLOAD_TIMEOUT_MS, "图片上传");
             window.__imgCache.set(imageId, dataUrl);
             return imageId;
@@ -471,8 +487,10 @@
             } catch (e) { console.warn("图片删除失败（不影响商品本身被删除）:", e && e.message); }
         };
 
-        // 渲染是同步的 innerHTML，取图是异步的：先吐占位图，取回来再填。
-        // 命中内存缓存时 shoppingImgHtml 会直接把 data URL 写进 src，所以重复渲染不会闪也不会重取。
+        // Rendering is synchronous innerHTML but fetching an image is async: render a
+        // placeholder first, then fill it in once the fetch resolves.
+        // On an in-memory cache hit, shoppingImgHtml writes the data URL straight into
+        // src, so re-rendering neither flashes nor re-fetches.
         window.hydrateImages = (root) => {
             const scope = root || document;
             if (!scope.querySelectorAll) return;
@@ -497,9 +515,12 @@
             return `<div class="w-24 h-24 md:w-28 md:h-28 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 flex-shrink-0 border border-slate-100"><i class="fas fa-image text-2xl"></i></div>`;
         };
 
-        /* 弹窗回填过来的 imgUrl 有三种：'' / 'imgref:<id>'（原图没动）/ 'data:...'（刚压好的新图）。
-           新图先原样内联到 item 上（这一段在第一个 await 之前同步跑完，所以立刻就能渲染出来），
-           上传被确认之后才换成引用并丢掉 base64——写入没成功之前绝不把用户的照片扔了。 */
+        /* The imgUrl the modal hands back is one of three shapes: '' / 'imgref:<id>'
+           (unchanged original image) / 'data:...' (freshly compressed new image).
+           A new image is inlined onto the item as-is first (this part runs synchronously
+           before the first await, so it renders immediately), and only swapped for a
+           reference — dropping the base64 — once the upload is confirmed: the user's
+           photo is never discarded before the write actually succeeds. */
         window.commitShoppingImage = async (item, raw) => {
             const prevId = item.imgId || '';
             if (!raw) { item.imgUrl = ''; item.imgId = ''; }
@@ -509,34 +530,42 @@
                 const targetId = window.imageIdForItem(item, 0);
                 try {
                     await window.putTripImage(raw, targetId);
-                    // 上传期间云端快照可能整份换掉 tripData，落回当前列表里的同 id 对象才不会写进孤儿对象
+                    // A cloud snapshot may have replaced tripData wholesale while the upload was in flight, so re-find the live object by id instead of writing back onto a possibly-stale `item`
                     const live = (tripData && Array.isArray(tripData.shoppingList) ? tripData.shoppingList.find(x => String(x.id) === String(item.id)) : null) || item;
                     live.imgId = targetId; live.imgUrl = '';
                     if (live !== item) { item.imgId = targetId; item.imgUrl = ''; }
                 } catch (e) { console.warn("图片上传未确认，先以内联形式保留（下次加载会自动重试迁移）:", e && e.message); }
             }
-            if (raw) delete item.imgMissing;   // 补回图了，「这张缺图」的标记就该消失
-            // 只有「确实换成了另一张」或者「用户就是要清空」才删旧图：上传失败时 imgId 还是空的，
-            // 这时候删掉旧文档，万一紧接着的 saveToCloud 也失败，云端仍指向那个已被删掉的 ID，两张都没了。
+            if (raw) delete item.imgMissing;   // image is back, so the "this one is missing" flag no longer applies
+            // Only delete the old image once it has actually been replaced by a
+            // different one, or the user deliberately cleared it. On a failed upload
+            // imgId is still empty — deleting the old doc then would leave the cloud
+            // pointing at a now-deleted ID if the following saveToCloud also fails,
+            // losing both images.
             if (prevId && prevId !== item.imgId && (item.imgId || !raw)) window.deleteTripImage(prevId);
             return item;
         };
 
-        /* 把老数据里内联的 base64 搬进子集合。要求：
-           1) 幂等——ID 由购物项推导，重跑只会覆盖同一批文档，不会长出第二份；
-           2) 不能在鉴权/db 就绪之前跑——下面三道同步检查 + ensureDb 就是这个闸门；
-           3) 半途失败也不能丢图——只有 putTripImage 成功返回之后才清掉那一项的 imgUrl，
-              失败的项原样留着内联数据，行程照常可用，下次加载再试。
-           imgMigrationDone 让一次会话最多尝试一次：迁移内部会 saveToCloud，saveToCloud 又会触发
-           快照 -> unlockApp -> 这里，没有这个闸门会递归；权限被拒之类的持续失败也会被打成死循环。 */
+        /* Moves legacy inline base64 images into the subcollection. Requirements:
+           1) idempotent — IDs are derived from the shopping item, so a re-run only
+              overwrites the same documents, never creates a second set;
+           2) must not run before auth/db are ready — the three sync checks below plus
+              ensureDb() are that gate;
+           3) a partial failure must not lose an image — an item's imgUrl is only
+              cleared once putTripImage() actually succeeds; a failed item keeps its
+              inline data, stays usable, and is retried on the next load.
+           imgMigrationDone caps this at one attempt per session: migration calls
+           saveToCloud(), which triggers snapshot -> unlockApp -> back here — without
+           this gate that recurses, and a persistent failure (e.g. permission denied)
+           would spin forever. */
         window.migrateInlineImages = async () => {
             if (imgMigrationDone || imgMigrationRunning) return false;
             if (!tripData || !Array.isArray(tripData.shoppingList)) return false;
             const pending = [];
             tripData.shoppingList.forEach((it, idx) => { if (it && typeof it.imgUrl === 'string' && it.imgUrl.indexOf('data:') === 0) pending.push({ it, idx }); });
-            if (pending.length === 0) return false;                                  // 没东西要搬，不占用这次机会
-            if (!isCloudConfigured || !user || cloudLocked || !tripId) return false;  // 没就绪就直接让给下一次
-            imgMigrationRunning = true;                                              // 同步占位，挡住并发的第二次调用
+            if (pending.length === 0) return false;                                  // nothing to migrate; don't consume this attempt
+            if (!isCloudConfigured || !user || cloudLocked || !tripId) return false;  // not ready yet, defer to the next attempt
+            imgMigrationRunning = true;                                              // synchronous guard against a concurrent second call
             let moved = 0;
             try {
                 if (!(await ensureDb())) return false;
@@ -544,7 +573,7 @@
                 const used = {};
                 for (const { it, idx } of pending) {
                     let id = window.imageIdForItem(it, idx);
-                    if (used[id]) id = id + '_' + idx;                                 // 万一老数据里有重复 id，别让两项共用一张图
+                    if (used[id]) id = id + '_' + idx;                                 // guard against duplicate ids in old data sharing one image
                     used[id] = true;
                     try { await window.putTripImage(it.imgUrl, id); it.imgId = id; it.imgUrl = ''; moved++; }
                     catch (e) { console.warn("图片迁移失败，保留内联数据:", e && e.message); }
@@ -573,8 +602,9 @@
             }
         };
 
-        /* Firestore 只允许 initializeFirestore 一次，重复调用会抛 "Firestore has already been started"；
-           而 initFirebase 在「启动失败 -> 用户粘贴配置」的路径上确实会被调用两次，故这里用 db 做闸门。 */
+        /* Firestore allows initializeFirestore() to be called only once; a second call
+           throws "Firestore has already been started". initFirebase can legitimately run
+           twice (startup failure -> user pastes config), so `db` is used as the guard. */
         const startFirestore = () => {
             if (db) return true;
             let hasIdb = false;
@@ -664,9 +694,10 @@
             el.innerText = text; el.className = 'sync-badge ' + (online ? 'sync-online' : 'sync-offline');
         };
 
-        /* 登录页现在是静态渲染的，用户完全可能在 SDK 落地之前就点“验证并进入”。
-           这里给出真实的“连接中…”状态并等待就绪；连不上时也绝不静默降级成离线，
-           而是把按钮变成需要用户再点一次的“以离线模式继续”。 */
+        /* The login screen is statically rendered, so the user may well click "verify
+           and enter" before the SDK has even landed. This shows a real "connecting..."
+           state and waits for it; if it can't connect, it never silently falls back to
+           offline — instead the button turns into an explicit second click. */
         window.attemptLogin = async () => {
             const idInput = document.getElementById('login-id').value.trim().toUpperCase(); const pinInput = document.getElementById('login-pin').value.trim();
             const errEl = document.getElementById('login-error');
@@ -684,7 +715,8 @@
             errEl.innerText = "无法连接云端（网络受限或鉴权失败）。\n再点一次可用本地数据离线进入。";
         };
 
-        /* 缓存秒开之后，用户已经在使用 App 了：此时任何一帧异常快照都不允许把人踢回登录页。 */
+        /* Once a cache fast-paint has happened, the user is already in the app — no
+           subsequent bad snapshot is allowed to kick them back to the login screen. */
         const showLoginError = (msg, force) => {
             if (appRevealed && !force) { console.warn("[sync]", String(msg).replace(/\n/g, ' ')); return; }
             document.getElementById('login-error').innerText = msg;
@@ -694,11 +726,13 @@
             showScreen('login');
         };
 
-        /* 四个全屏容器天生互斥，任何时刻只能有一个可见。
-           登录页现在是静态可见的，光靠 z-index + 半透明遮罩盖不住它
-           （60% 的遮罩会把下面的登录框直接透出来），所以统一走这个状态机切屏。 */
+        /* The four full-screen containers are mutually exclusive by design — only one
+           may be visible at a time. The login screen is now statically visible, and
+           z-index plus a translucent overlay alone can't hide it (a 60% overlay still
+           lets the login box show through), so screen switching always goes through
+           this one state machine. */
         const SCREENS = { config: 'config-screen', login: 'login-screen', init: 'init-screen', app: 'app-wrap' };
-        let currentScreen = 'login';   // 与静态 HTML 的初始状态保持一致
+        let currentScreen = 'login';   // matches the static HTML's initial state
         const showScreen = (name) => {
             currentScreen = name;
             for (const key in SCREENS) {
@@ -707,8 +741,10 @@
             }
         };
 
-        /* 陷阱 1：onSnapshot 是持续监听，开启持久化缓存后首屏会「先缓存再服务端」连开两枪。
-           把「露出外壳」和「重绘数据」拆开，露出外壳做成幂等。 */
+        /* Trap 1: onSnapshot is a persistent listener, and with the persistent cache
+           on, the first screen fires twice in a row — cache frame, then server frame.
+           So "reveal the shell" and "repaint the data" are kept separate, and revealing
+           the shell is made idempotent. */
         const revealApp = () => {
             if (appRevealed && currentScreen === 'app') return;
             appRevealed = true;
@@ -721,8 +757,10 @@
             if (tripData?.tripName) { badge.innerText = `• ${tripData.tripName}`; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
         };
 
-        // 迁移挂在这里：所有加载路径都会经过 unlockApp，而 migrateInlineImages 自己会在
-        // 鉴权/db 没就绪时原地返回，所以不需要动启动状态机，也不需要碰快照回调里的徽标/去重逻辑。
+        // Migration is hooked in here because every loading path passes through
+        // unlockApp, and migrateInlineImages itself returns immediately if auth/db
+        // aren't ready — so it needs no changes to the startup state machine or to the
+        // badge/dedup logic in the snapshot handler.
         const unlockApp = () => { revealApp(); refreshAppChrome(); window.render(); window.migrateInlineImages().catch(e => console.warn("图片迁移异常:", e && e.message)); };
 
         window.deleteEntireTrip = async () => {
@@ -790,19 +828,22 @@
                     tripPin = finalPin;
                     localStorage.setItem('trip_sync_id', tripId);
                     localStorage.setItem('trip_sync_pin', tripPin);
-                    /* 备份文件里的图片是内联的 base64，导入时要反向拆进子集合。
-                       换了新行程，缓存和迁移闸门都要重置；先迁移再保存，这样这份行程的第一次写云端
-                       就已经是「不带 base64」的小文档了。迁移跑不起来（离线等）也不丢图——
-                       saveToCloud 会把内联数据原样存下来，下次加载再迁移。 */
+                    /* Images in a backup file are inline base64, and importing needs to
+                       reverse that back out into the subcollection. Since this switches
+                       to a new trip, both the cache and the migration gate must be reset;
+                       migrating before saving means this trip's first cloud write is
+                       already the small, base64-free form. If migration can't run (e.g.
+                       offline), nothing is lost — saveToCloud stores the inline data as-is
+                       and migration retries on the next load. */
                     imgMigrationDone = false; imgMigrationRunning = false; window.__imgCache.clear();
                     await window.migrateInlineImages().catch(e => console.warn("导入时迁移图片失败:", e && e.message));
                     await window.saveToCloud();
                     unlockApp();
 
-                    // 备份如果是「缺图导出」，必须在导入这一刻就告诉用户，而不是等他哪天去翻照片才发现
+                    // If the backup was exported with missing images, the user must be told at import time, not left to discover it later
                     const shortBy = parseInt(sanitized.imagesIncomplete) || (sanitized.shoppingList || []).filter(it => it && it.imgMissing).length;
                     alert(`导入成功！新行程已成功部署到云端同步码: ${tripId}` + (shortBy > 0 ? `\n\n⚠️ 注意：这份备份本身就缺 ${shortBy} 张商品图片（导出时没能读到）。相关商品在清单里会显示为空图，需要重新上传。` : ''));
-                    // 已经当面告知过了，标记就不必再跟着这份行程长期留在云端；重新传图时 commitShoppingImage 也会清掉
+                    // The user has already been told, so the flag doesn't need to persist on the trip long-term; re-uploading an image also clears it via commitShoppingImage
                     if (shortBy > 0) { delete tripData.imagesIncomplete; (tripData.shoppingList || []).forEach(it => { if (it) delete it.imgMissing; }); window.saveToCloud(); }
                 } catch (err) {
                     console.error("JSON 导入错误:", err);
@@ -860,8 +901,9 @@
             unlockApp();
         };
 
-        /* saveToCloud 一直在写 trip_local_${tripId}，之前只在失败路径上才读。
-           这里改成启动即读：命中就先把整个 App 画出来，Firebase 随后在后台对账。 */
+        /* saveToCloud has always written trip_local_${tripId}; this used to only be read
+           on the failure path. Now it's read on every boot: a hit paints the whole app
+           immediately, and Firebase reconciles it in the background afterward. */
         const tryCacheFirstBoot = () => {
             if (!tripId) return false;
             let cached = null;
@@ -885,9 +927,16 @@
             const reqId = testId || tripId; const reqPin = testPin !== undefined ? testPin : tripPin;
             lastSnapshotJson = null;
             clearTimeout(syncWaitTimer);
-            // 云端一直不吭声时（弱网/被墙）也要让用户进得去，不能永远停在“检查中…”
+            // If the cloud stays silent (weak network / blocked), let the user in anyway instead of stalling on "checking..." forever
             if (!appRevealed) syncWaitTimer = setTimeout(() => { if (!appRevealed) { console.warn("云端首帧超时，先用本地数据进入"); loadLocalFallback(); } }, CLOUD_PAINT_TIMEOUT_MS);
 
+            // includeMetadataChanges: true is required — without it, the callback never
+            // fires again for a cache-only -> server-confirmed metadata-only transition,
+            // so the sync badge would get stuck showing "local cache" forever even
+            // once the server has actually confirmed the data. hasPendingWrites is read
+            // separately from fromCache because they answer different questions: whether
+            // this frame came from the local cache vs. whether this device still has an
+            // unconfirmed local write pending.
             syncUnsubscribe = onSnapshot(window.getTripDocRef(reqId), { includeMetadataChanges: true }, (snap) => {
                 const fromCache = !!(snap.metadata && snap.metadata.fromCache);
                 const pending = !!(snap.metadata && snap.metadata.hasPendingWrites);
@@ -898,7 +947,7 @@
                     }
 
                     if (cloudData.pin && cloudData.pin !== reqPin) {
-                        // 陷阱 2：缓存秒开后用户已经在用了，密码不符的快照不能把人踢回登录页
+                        // Trap 2: after a cache fast-paint the user is already in the app; a snapshot with a mismatched PIN must not kick them back to login
                         if (appRevealed) {
                             if (syncUnsubscribe) { syncUnsubscribe(); syncUnsubscribe = null; }
                             cloudLocked = true;
@@ -914,8 +963,10 @@
                     cloudLocked = false; pinConflictNotified = false;
                     setSyncBadge(pending ? '保存中' : (fromCache ? '本地缓存' : '已同步'), !fromCache);
 
-                    // 持久化缓存会让同一份数据先后到达两次（缓存帧 + 服务端帧），
-                    // 内容没变就只保证外壳露出，不重绘 —— 否则会平白多吃掉一次 contenteditable 焦点。
+                    // The persistent cache delivers the same data twice in a row (cache
+                    // frame, then server frame); if the content is unchanged, only ensure
+                    // the shell is revealed and skip re-rendering — otherwise a
+                    // contenteditable field would needlessly lose focus a second time.
                     const json = JSON.stringify(cloudData);
                     const changed = json !== lastSnapshotJson;
                     lastSnapshotJson = json;
@@ -924,7 +975,7 @@
                     try { localStorage.setItem(`trip_local_${tripId}`, json); } catch (e) { console.warn("本地缓存写入失败:", e && e.message); }
                     unlockApp();
                 } else {
-                    // 开启持久化缓存后，“文档不存在”可能只是本地缓存里没有，不能据此弹“构建新旅程”
+                    // With the persistent cache on, "document doesn't exist" may just mean it isn't in the local cache yet — don't treat that as grounds to offer "create new trip"
                     if (fromCache) { setSyncBadge('连接中', false); return; }
                     clearTimeout(syncWaitTimer);
                     if (appRevealed) { setSyncBadge('云端无数据', false); return; }
@@ -996,10 +1047,13 @@
             } catch(err) { console.error("PDF导出失败:", err); alert("PDF导出异常：" + err.message); }
         };
 
-        /* 图片挪进子集合之后，行程文档里只剩引用了。但 JSON 导出是用户唯一的整份备份手段，
-           一份没有图片的备份是坏备份——所以导出前必须把图片重新内联回来。
-           开着 persistentLocalCache，取过的图都在 IndexedDB 里，断网状态下多数也能照常取到，
-           真正会失败的只有「本地没缓存 + 当前又够不着云端」这一种，先老老实实一张张试。 */
+        /* Once images moved into the subcollection, the trip doc only holds references.
+           But a JSON export is the user's only full-backup mechanism, and a backup
+           without images is a broken backup — so images must be re-inlined before
+           exporting. With persistentLocalCache on, previously-fetched images live in
+           IndexedDB and mostly still resolve while offline; the only real failure case is
+           "not cached locally and the cloud is unreachable right now", so just try each
+           one honestly. */
         window.exportItineraryJSON = async () => {
           try {
             if (!tripData) return;
@@ -1011,16 +1065,19 @@
                     if (!it || typeof it !== 'object') continue;
                     delete it.imgMissing;
                     if (!it.imgId) continue;
-                    if (typeof it.imgUrl === 'string' && it.imgUrl.indexOf('data:') === 0) continue;   // 还没迁移的，本来就自带图
+                    if (typeof it.imgUrl === 'string' && it.imgUrl.indexOf('data:') === 0) continue;   // not migrated yet, already carries its own inline image
                     const inlined = await window.readTripImage(it.imgId);
                     if (inlined) it.imgUrl = inlined;
-                    else { it.imgMissing = true; missing.push(it.name || it.imgId); }   // 引用留着，但要在文件里留下「这张缺了」的证据
+                    else { it.imgMissing = true; missing.push(it.name || it.imgId); }   // keep the reference, but leave evidence in the file that "this one is missing"
                 }
             }
-            /* 真有取不到的：既不能替用户决定放弃（人可能正赶飞机、酒店网烂得要命，
-               缺图的备份也远好过没备份），也不能默默给一份看起来正常、其实缺图的文件——
-               后者是最坏的结果，它让人以为自己有一份完整备份。所以报出张数让用户自己选，
-               并且真导出的话，文件本身必须带着「我不完整」的标记，导入时还会再提醒一次。 */
+            /* If some images genuinely can't be fetched: don't decide to give up on the
+               user's behalf (they might be about to board a flight, on terrible hotel
+               wifi — an incomplete backup still beats no backup), and don't silently hand
+               back a file that looks complete but isn't — that's the worst outcome, since
+               it makes someone believe they have a full backup. So report the count and
+               let the user choose, and if they do export, the file itself must carry an
+               "I'm incomplete" marker, and importing it warns again. */
             if (missing.length > 0) {
                 const go = confirm(`⚠️ 有 ${missing.length} 张商品图片读取不到（本地没有缓存，且当前连不上云端）。\n\n缺图商品：${missing.slice(0, 5).join('、')}${missing.length > 5 ? ' 等' : ''}\n\n【确定】= 仍然导出（缺 ${missing.length} 张图片）：文件会明确标记缺哪几项，导入时也会再提醒。\n【取消】= 放弃本次导出，等能连上云端时再导一份完整的。`);
                 if (!go) return;
@@ -1044,7 +1101,7 @@
                     else if (f.type === 'info') inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
                     else if (f.type === 'textarea') inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
                     else if (f.type === 'model_select') inputHtml = `<div class="flex gap-2"><select id="f-${f.id}" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="${f.value || 'gemini-3.5-flash'}">${f.value || 'gemini-3.5-flash'}</option><option value="gemini-3.5-flash">gemini-3.5-flash</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select><button type="button" onclick="window.fetchGeminiModels('f-${f.keyRef}', 'f-${f.id}')" class="px-4 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl text-xs font-bold hover:bg-blue-100 transition whitespace-nowrap shadow-sm">获取列表</button></div>`;
-                    // 图片字段的值有三种：'' / 'imgref:<id>'（子集合里的原图，异步填）/ 'data:...'（刚压好的新图）
+                    // The image field's value is one of three shapes: '' / 'imgref:<id>' (original image in the subcollection, filled in async) / 'data:...' (freshly compressed new image)
                     else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${String(f.value || '').indexOf('imgref:') === 0 ? `<img src="${window.IMG_PLACEHOLDER}" data-img-ref="${String(f.value).slice(7)}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : (f.value ? `<img src="${f.value}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`)}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
                     wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
@@ -1092,10 +1149,13 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                 
-                    /* WebP 同画质下一般比 JPEG 小 30% 左右，但不能无脑用：
-                       Safari 的 canvas 会「解码」WebP 很多年之后才学会「编码」WebP，
-                       不支持编码的时候 toDataURL('image/webp') 不会报错，而是静默返回一张 PNG
-                       ——那比现在的 JPEG 还大。所以必须验返回值的前缀，并且只在确实更小时才采用。 */
+                    /* WebP is typically ~30% smaller than JPEG at the same quality, but it
+                       can't be used blindly: Safari's canvas learned to *decode* WebP long
+                       before it learned to *encode* it. Where encoding isn't supported,
+                       toDataURL('image/webp') doesn't throw — it silently returns a PNG,
+                       which is bigger than the JPEG it would replace. So the returned
+                       string's prefix must be checked, and WebP only used when it's
+                       actually smaller. */
                     const jpgStr = canvas.toDataURL('image/jpeg', 0.6);
                     let webpStr = '';
                     try { webpStr = canvas.toDataURL('image/webp', 0.7) || ''; } catch (e) { webpStr = ''; }
@@ -1339,7 +1399,7 @@
 
                 itemsInCat.forEach(({ item, originalIdx }) => {
                     const itemDiv = document.createElement('div');
-                    // 引用形态的图片先出占位图、渲染完再异步填；顺带不再把几十 KB 的 base64 塞进 onclick 属性里
+                    // Reference-form images render a placeholder first and fill in async; this also avoids stuffing tens of KB of base64 into an onclick attribute
                     const imgHtml = window.shoppingImgHtml(item);
                     const boughtClass = item.bought ? 'opacity-60 grayscale bg-slate-50' : 'bg-slate-50/40';
                     const boughtBtn = item.bought ? `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold w-full mt-2 transition-colors">已购买</button>` : `<button onclick="window.toggleShoppingItem(${originalIdx})" class="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl font-bold hover:bg-slate-50 w-full mt-2 transition-colors flex items-center justify-center"><i class="fas fa-check text-blue-500 mr-1.5"></i> 标记已买</button>`;
@@ -1567,11 +1627,11 @@
                 if(!v.name) { alert("商品名称为必填项"); return false; }
                 if(!tripData.shoppingList) tripData.shoppingList = [];
                 const raw = v.imgUrl; delete v.imgUrl;
-                // 图片文档 ID 由商品 id 推导，所以这里必须保证 id 在本清单内唯一（同一毫秒连点两次也不能撞）
+                // The image doc ID is derived from the item's id, so that id must be unique within this list (even two clicks in the same millisecond must not collide)
                 let newId = Date.now(); while (tripData.shoppingList.some(x => x && String(x.id) === String(newId))) newId++;
                 const item = { id: newId, ...v, imgUrl: '', imgId: '', bought: false };
                 tripData.shoppingList.push(item);
-                // commitShoppingImage 在第一个 await 之前就把 base64 挂到 item 上了，所以这次 render 立刻能看到图
+                // commitShoppingImage attaches the base64 to the item before its first await, so this render already shows the image immediately
                 const committing = window.commitShoppingImage(item, raw);
                 window.render();
                 committing.then(() => { window.saveToCloud(); window.render(); });
@@ -1589,7 +1649,7 @@
                 { id: 'note', label: '备注', type: 'textarea', value: item.note }
             ], (v) => {
                 if(!v.name) { alert("商品名称为必填项"); return false; }
-                const raw = v.imgUrl; delete v.imgUrl;      // imgUrl 走 commitShoppingImage，不能让它直接盖回 item
+                const raw = v.imgUrl; delete v.imgUrl;      // imgUrl goes through commitShoppingImage; it must not be written straight back onto item
                 Object.assign(item, v);
                 const committing = window.commitShoppingImage(item, raw);
                 window.render();
@@ -1598,7 +1658,7 @@
         };
 
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; window.saveToCloud(); window.render(); };
-        // 顺手把子集合里的图片文档也删掉，避免孤儿图片一直占着空间；删图失败绝不能挡住删商品本身
+        // Also delete the image doc in the subcollection so it doesn't linger as an orphan; a failed image delete must never block deleting the item itself
         window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { const gone = tripData.shoppingList.splice(idx, 1)[0]; if (gone && gone.imgId) window.deleteTripImage(gone.imgId).catch(e => console.warn("图片删除异常:", e && e.message)); window.saveToCloud(); window.render(); }); };
 
         window.askGemini = async (payload, apiKey, modelName = "gemini-3.5-flash", isJson = false) => {
@@ -2074,7 +2134,7 @@
                         groupId: groupId,
                         groupTotalJpy: totalLocal, 
                         receiptLabel: receiptLabel,
-                        date: globalDate, // ✅ 存储自动提取或校对后的日期
+                        date: globalDate, // the auto-extracted/verified date
                         item: item.item,
                         category: item.category || '其他/Other',
                         amount: parseFloat(item.amount),
@@ -2284,6 +2344,7 @@
                     { id: 'moveTo', label: '所在日期', type: 'select', options: tripData.days.map(d => ({ value: d.id, text: `Day ${d.id} · ${d.date} ${d.title}` })), value: day.id }
                 ], (v) => {
                     ev.time = v.time; if (!ev.options || ev.options.length === 0) ev.options = [{}]; ev.options[0].title = v.title; ev.options[0].link = v.link; ev.options[0].price = v.price; ev.options[0].dishes = v.dishes;
+                    // The <select>'s value always comes back as a string, while day.id is a number — compare with String() on both sides (and re-find the target with Number()), or days.find(d => d.id === v.moveTo) silently fails to match and the move just does nothing, with no error
                     if (String(v.moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(v.moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
                     day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
                 });
@@ -2297,6 +2358,7 @@
                     { id: 'moveTo', label: '所在日期', type: 'select', options: tripData.days.map(d => ({ value: d.id, text: `Day ${d.id} · ${d.date} ${d.title}` })), value: day.id }
                 ], (v) => {
                     const moveTo = v.moveTo; delete v.moveTo; Object.assign(ev, v);
+                    // Same String()/Number() coercion as above: moveTo is a string from the <select>, day.id is a number, and the find() below needs them to actually match
                     if (String(moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
                     day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
                 });
@@ -2309,9 +2371,11 @@
         window.deleteCurrentDay = () => { if (tripData.days.length <= 1) { window.openModal("无法删除", "", [{ id: 'i', label: '提示', type: 'info', value: '行程中至少需要保留一天！' }], () => {}); return; } window.openModal("删除此日", "此操作不可恢复", [{ id: 'i', label: '警告', type: 'info', value: '确定删除这一天的所有行程安排吗？' }], () => { tripData.days = tripData.days.filter(d => d.id !== tripData.currentDay); window.recalculateAllDates(); tripData.currentDay = tripData.days[0].id; window.saveToCloud(); window.render(); }); };
         window.setDayHotel = () => { const day = tripData.days.find(d => d.id === tripData.currentDay); window.openModal("设置当日住宿", "可以在行程中快速记录酒店位置与入住信息", [{ id: 't', label: '酒店名称', value: day.hotelName || '', placeholder: '例如：新罗酒店' }, { id: 'l', label: '地图链接 (可选)', value: day.hotelLink || '', placeholder: '地图链接' }, { id: 'n', label: '预订备注/口令 (可选)', type: 'textarea', value: day.hotelNote || '', placeholder: '入住密码、确认单号等...' }], (v) => { day.hotelName = v.t; day.hotelLink = v.l; day.hotelNote = v.n; window.saveToCloud(); window.render(); }); };
 
-        /* 鉴权只做一次。注意：onAuthStateChanged 的第一帧很可能是 null（匿名登录还在路上），
-           原来的写法会把这一帧当成“鉴权结束”，于是整个会话被静默降级成离线。这里只认真实 user，
-           失败/超时才落到 false，并且允许下一次点击重试。 */
+        /* Auth is only ever resolved once. Note: onAuthStateChanged's first callback is
+           very likely null (anonymous sign-in is still in flight); treating that frame as
+           "auth is done" — as an earlier version did — would silently downgrade the whole
+           session to offline. This only trusts a real user; only failure/timeout resolves
+           to false, and a later click may retry. */
         const ensureAuth = () => {
             if (authReadyPromise) return authReadyPromise;
             authReadyPromise = new Promise((resolve) => {
@@ -2335,7 +2399,7 @@
             return authReadyPromise.then((ok) => { if (!ok) authReadyPromise = null; return ok; });
         };
 
-        // 「云端可用」= SDK 到位 + App 初始化成功 + 拿到 user。失败时清空 promise，允许再点一次重试。
+        // "Cloud ready" = SDK loaded + app initialized + got a user. On failure the promise is cleared so a later click can retry.
         const ensureCloudReady = () => {
             if (cloudReadyPromise) return cloudReadyPromise;
             cloudReadyPromise = (async () => {
@@ -2353,7 +2417,7 @@
 
         const handleCloudUnavailable = () => {
             setSyncBadge('离线模式', false);
-            if (appRevealed) { setLoginBusy(false); return; }   // 缓存已经把 App 画出来了，安静地留在离线
+            if (appRevealed) { setLoginBusy(false); return; }   // the cache already painted the app; quietly stay offline
             if (tripId) {
                 offlineEntryArmed = true; offlineEntryFor = tripId;
                 setLoginBusy(false, "以离线模式继续");
@@ -2373,7 +2437,7 @@
             return false;
         };
 
-        /* 启动：登录页已经由静态 HTML 画出来了，这里只负责“切屏 + 后台对账”。 */
+        /* Boot: the login screen is already painted by static HTML; this is only responsible for switching screens and reconciling in the background. */
         const boot = () => {
             if (!hasCloudConfig()) { showScreen('config'); return; }
             prefillLogin();
@@ -2386,15 +2450,16 @@
     </script>
 
     <script>
-        /* Service Worker 注册：只负责把静态壳资源缓存起来，任何失败都
-           不能影响 App 本身——整体包一层 try/catch，失败只 console.warn，
-           不抛出、不阻断任何东西。注册动作放进 window 的 load 事件里，
-           不占用首屏渲染/解析的任何时间，也不会跟上面的启动逻辑抢跑。
+        /* Service worker registration: only caches the static shell assets. Any failure
+           here must never affect the app itself — the whole thing is wrapped in
+           try/catch, and a failure only console.warns, never throws or blocks anything.
+           Registration is deferred to window's load event so it doesn't compete with
+           first-paint rendering/parsing or race the startup logic above.
 
-           调试/降级出口：访问地址后面加 ?sw=off 会强制注销所有已注册
-           的 Service Worker、清空它建的所有 Cache Storage，然后原地
-           reload 一次干净页面——预览分支升级为生产环境、或怀疑是缓存
-           导致的问题时，用这个不用等版本号轮换。 */
+           Debug/rollback escape hatch: appending ?sw=off to the URL force-unregisters
+           every registered service worker, clears every Cache Storage it created, and
+           reloads to a clean page — use this instead of waiting on a version bump when
+           promoting a preview branch to production or suspecting a caching issue. */
         (function () {
             if (!('serviceWorker' in navigator)) return;
 

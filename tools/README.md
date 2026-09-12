@@ -22,10 +22,9 @@ free **Spark** plan, where that feature is unavailable.
 
 1. Open the [Firebase console](https://console.firebase.google.com/) and
    select the WanderSync project.
-2. Click the gear icon → **Project settings** (项目设置).
-3. Switch to the **Service accounts** (服务账号) tab.
-4. Click **Generate new private key** (生成新的私钥). This downloads a
-   `.json` file.
+2. Click the gear icon → **Project settings**.
+3. Switch to the **Service accounts** tab.
+4. Click **Generate new private key**. This downloads a `.json` file.
 
 **This file is a full admin credential for the project — treat it like a
 root password.** Do not save it inside this repository (this repo is

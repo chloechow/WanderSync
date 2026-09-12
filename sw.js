@@ -1,29 +1,32 @@
 /*
  * WanderSync App Shell Service Worker
  * ------------------------------------------------------------------
- * 目的：iPhone「添加到主屏幕」的独立 Web App 每次启动都是真·冷启动
- * （iOS 会杀掉进程、没有 bfcache，且它的存储容器和 Safari 完全隔离，
- * 之前做的 localStorage 缓存优先渲染在这里完全用不上）。没有 Service
- * Worker 就意味着每次点桌面图标都要重新联网下载 index.html + 3 个 CSS
- * + 字体文件，这就是白屏的根源。这个文件只做一件事：把这些"壳"资源
- * 缓存到 Cache Storage 里，离线/弱网时也能立刻画出界面。
+ * Purpose: an iPhone home-screen web app is a true cold start every single
+ * launch (iOS kills the process, there's no bfcache, and its storage is
+ * fully isolated from Safari — so the localStorage cache-first rendering
+ * built elsewhere is unavailable here). Without a service worker, every
+ * home-screen tap would re-download index.html + 3 stylesheets + fonts
+ * over the network, which is the root cause of the white-screen flash.
+ * This file does exactly one thing: cache those "shell" assets in Cache
+ * Storage so the UI can paint instantly even offline or on a bad network.
  *
- * 明确不做的事情（写在这里防止以后不小心改坏）：
- *   - 不缓存任何跨域请求（gstatic 的 Firebase SDK、Firestore 的实时
- *     通道、identitytoolkit 鉴权、Gemini API）。这些如果被 SW 缓存，
- *     会产生"离线一段时间后的数据是旧的"这种极难排查的状态，所以一律
- *     直接放行给网络，SW 完全不拦截。
- *   - 不做 skipWaiting()。新版本要等下一次启动才会激活，因为 iOS 的
- *     主屏 App 反正每次都是冷启动，没有"同一次会话里资源被偷换"的
- *     风险，用不着抢着立刻接管。
+ * Deliberately NOT done (documented so it doesn't get "fixed" later):
+ *   - No caching of any cross-origin request (Firebase SDK on gstatic,
+ *     Firestore's realtime channel, identitytoolkit auth, the Gemini API).
+ *     Caching those would produce an extremely hard-to-debug "stale data
+ *     after being offline for a while" state, so they always pass straight
+ *     through to the network — the SW never intercepts them.
+ *   - No skipWaiting(). A new version only activates on the next launch:
+ *     since a home-screen app is a cold start every time anyway, there's
+ *     no "assets swapped out mid-session" risk to race against.
  */
 
 const SW_VERSION = 'v2';
 const CACHE_NAME = `wandersync-shell-${SW_VERSION}`;
 
-// 所有路径都用相对路径：GitHub Pages 项目页跑在
-// <user>.github.io/WanderSync/ 这种子路径下，写成 /index.html 这种
-// 绝对路径会直接 404。
+// All paths are relative: a GitHub Pages project site is served under a
+// subpath like <user>.github.io/WanderSync/, so an absolute path such as
+// /index.html would 404.
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -39,8 +42,8 @@ const PRECACHE_URLS = [
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    // 逐个 add，单个资源 404/网络失败不应该让整个 install 失败——
-    // 哪怕只缓存上了 index.html，也比什么都没有强。
+    // Add one at a time — a single asset's 404/network failure shouldn't
+    // fail the whole install; caching even just index.html beats nothing.
     await Promise.all(PRECACHE_URLS.map(async (url) => {
       try {
         const req = new Request(url, { cache: 'reload' });
@@ -49,18 +52,18 @@ self.addEventListener('install', (event) => {
           await cache.put(url, res);
         }
       } catch (e) {
-        // 安装阶段联网失败很正常（比如离线状态下第一次注册），
-        // 不阻塞其余资源的缓存。
+        // A network failure during install is normal (e.g. first
+        // registration while offline); don't block caching the rest.
       }
     }));
   })());
-  // 不调用 self.skipWaiting()：新 SW 保持 waiting，直到旧 SW 的所有
-  // 客户端都关闭后才会在下一次启动时自然 activate。
+  // No self.skipWaiting(): the new SW stays waiting and only activates on
+  // the next launch, once all of the old SW's clients have closed.
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    // 清理旧版本缓存：壳资源要能更新，永远无法升级的缓存是真正的隐患。
+    // Clean up old cache versions: the shell assets need to be updatable, and a cache that can never be superseded is a real liability.
     const keys = await caches.keys();
     await Promise.all(
       keys
@@ -72,13 +75,15 @@ self.addEventListener('activate', (event) => {
 });
 
 function isCacheableResponse(res) {
-  // 不缓存非 200（包括 404/500）和 opaque 响应（跨域 no-cors 请求返回
-  // 的那种状态码/内容都读不到的响应，缓存了也没法判断好坏）。
+  // Skip non-200 responses (404/500 included) and opaque ones (the
+  // status/content-blind response type cross-origin no-cors requests
+  // return — there's no way to tell if it's good, so don't cache it).
   return !!res && res.status === 200 && res.type === 'basic';
 }
 
-// PRECACHE_URLS 转成绝对 URL 集合，fetch 时按绝对地址比对，不依赖
-// pathname 字符串拼接（GitHub Pages 子路径 + 相对路径拼起来很容易错）。
+// Turn PRECACHE_URLS into a set of absolute URLs, compared against absolute
+// request URLs at fetch time — avoids error-prone string concatenation of
+// a GitHub Pages subpath with relative paths.
 const PRECACHE_ABSOLUTE_URLS = new Set(
   PRECACHE_URLS.map((u) => new URL(u, self.registration.scope).href)
 );
@@ -89,19 +94,23 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // 只拦截同源的静态壳资源。Firebase SDK (gstatic)、Firestore 实时
-  // 通道、identitytoolkit 鉴权、Gemini API 一律直接走网络，SW 完全
-  // 不插手——缓存这些会导致极难排查的"数据是旧的"问题。
+  // Only intercept same-origin static shell assets. The Firebase SDK
+  // (gstatic), Firestore's realtime channel, identitytoolkit auth, and the
+  // Gemini API always go straight to the network, untouched by the SW —
+  // caching them would cause an extremely hard-to-debug "stale data" issue.
   if (url.origin !== self.location.origin) return;
 
-  // 导航请求（用户打开/刷新页面）：stale-while-revalidate，先用缓存
-  // 秒开壳，同时后台悄悄去更新缓存，供下一次启动用。
+  // Navigation requests (opening/refreshing the page): stale-while-revalidate
+  // — serve the cached shell instantly, refreshing the cache in the
+  // background for next launch.
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      // 先精确匹配这次导航的 URL（比如 "/WanderSync/" 目录本身），
-      // 匹配不到（比如清缓存后第一次跑）再退到 index.html 的缓存副本，
-      // 两者内容一致（GitHub Pages 对目录请求返回的就是 index.html）。
+      // Try an exact match on this navigation's URL first (e.g. the
+      // "/WanderSync/" directory itself); fall back to the cached
+      // index.html (e.g. first run after clearing cache) — the two are
+      // equivalent, since GitHub Pages serves index.html for directory
+      // requests anyway.
       const cached = (await cache.match(request)) || (await cache.match('./index.html'));
 
       const networkFetch = fetch(request).then((res) => {
@@ -112,7 +121,7 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => null);
 
       if (cached) {
-        // 后台刷新，不等待、不阻塞当前这次渲染。
+        // Refresh in the background; don't await it or block this render.
         networkFetch.catch(() => {});
         return cached;
       }
@@ -120,8 +129,8 @@ self.addEventListener('fetch', (event) => {
       const networkRes = await networkFetch;
       if (networkRes) return networkRes;
 
-      // 网络也不通、缓存也没有：没有更好的兜底了，只能把错误抛回去，
-      // 交给浏览器显示默认的离线页面。
+      // Neither network nor cache available: no better fallback exists,
+      // so surface an error and let the browser show its default offline page.
       return new Response('WanderSync 离线且本地暂无缓存，请在联网状态下先打开一次应用。', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -130,8 +139,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 其余同源静态资源（CSS / 字体 / manifest / 图标）：缓存优先，命中
-  // 直接用，未命中则回源网络并写入缓存，供下次使用。
+  // Remaining same-origin static assets (CSS / fonts / manifest / icons):
+  // cache-first — serve a hit directly; on a miss, fetch from the network
+  // and cache it for next time. There is no revalidation, so any change to
+  // a static asset requires bumping SW_VERSION.
   const isShellAsset = PRECACHE_ABSOLUTE_URLS.has(url.href) ||
     request.destination === 'style' || request.destination === 'font' ||
     request.destination === 'image';
@@ -148,10 +159,10 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       } catch (e) {
-        // 离线且未缓存过的静态资源：没有更好的选择，只能让请求失败。
+        // Offline and never cached: no better option than letting the request fail.
         return new Response('', { status: 504, statusText: 'Offline and not cached' });
       }
     })());
   }
-  // 其他同源请求（未列出的类型）：不拦截，直接走默认网络行为。
+  // Other same-origin requests (types not listed above): don't intercept, fall through to default network behavior.
 });

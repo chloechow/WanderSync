@@ -1,5 +1,9 @@
 .DS_Store
 
+# Owner-only operational runbook (Chinese) — not for the public repo,
+# delivered to the owner separately.
+RUNBOOK.zh.md
+
 # 依赖
 node_modules/
 
