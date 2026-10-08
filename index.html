@@ -157,7 +157,7 @@
                             <button type="button" onclick="window.fetchGeminiModels('init-ai-key', 'init-ai-model')" class="px-3 bg-blue-500 text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition shadow-sm whitespace-nowrap">获取模型</button>
                         </div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">选择AI模型</label>
-                        <select id="init-ai-model" class="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-3"><option value="gemini-3.5-flash">gemini-3.5-flash (默认)</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select>
+                        <select id="init-ai-model" class="w-full p-3 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mb-3"><option value="gemini-3.5-flash">gemini-3.5-flash (默认)</option><option value="gemini-2.5-flash">gemini-2.5-flash</option></select>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1.5 pl-1">怎么玩？(描述偏好)</label>
                         <textarea id="init-ai-prompt" rows="3" placeholder="例如：想打卡圣水洞咖啡店，晚上吃韩牛，留半天买衣服..." class="w-full p-3 bg-white border border-blue-200 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"></textarea>
                     </div>
@@ -1100,7 +1100,7 @@
                     if (f.type === 'select') inputHtml = `<div class="relative"><select id="f-${f.id}" class="appearance-none w-full p-4 bg-slate-50 border border-slate-200 text-slate-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 transition-all" onchange="${f.onchange || ''}">${f.options.map(o => `<option value="${o.value !== undefined ? o.value : o}" ${o===f.value||o.value===f.value?'selected':''}>${o.text !== undefined ? o.text : o}</option>`).join('')}</select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400"><i class="fas fa-chevron-down text-[10px]"></i></div></div>`;
                     else if (f.type === 'info') inputHtml = `<div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3"><i class="fas fa-info-circle text-blue-500 mt-0.5"></i><p class="text-xs text-blue-800 leading-relaxed whitespace-pre-wrap">${f.value}</p></div>`;
                     else if (f.type === 'textarea') inputHtml = `<textarea id="f-${f.id}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 font-mono text-slate-800 transition-all" rows="5" placeholder="${f.placeholder || ''}">${f.value || ''}</textarea>`;
-                    else if (f.type === 'model_select') inputHtml = `<div class="flex gap-2"><select id="f-${f.id}" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"><option value="${f.value || 'gemini-3.5-flash'}">${f.value || 'gemini-3.5-flash'}</option><option value="gemini-3.5-flash">gemini-3.5-flash</option><option value="gemini-2.5-flash">gemini-2.5-flash</option><option value="gemini-1.5-pro">gemini-1.5-pro</option></select><button type="button" onclick="window.fetchGeminiModels('f-${f.keyRef}', 'f-${f.id}')" class="px-4 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl text-xs font-bold hover:bg-blue-100 transition whitespace-nowrap shadow-sm">获取列表</button></div>`;
+                    else if (f.type === 'model_select') inputHtml = `<div class="flex gap-2"><select id="f-${f.id}" class="flex-1 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">${[...new Set([f.value || 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'])].map(m => `<option value="${m}">${m}</option>`).join('')}</select><button type="button" onclick="window.fetchGeminiModels('f-${f.keyRef}', 'f-${f.id}')" class="px-4 bg-blue-50 text-blue-600 border border-blue-200 rounded-2xl text-xs font-bold hover:bg-blue-100 transition whitespace-nowrap shadow-sm">获取列表</button></div>`;
                     // The image field's value is one of three shapes: '' / 'imgref:<id>' (original image in the subcollection, filled in async) / 'data:...' (freshly compressed new image)
                     else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${String(f.value || '').indexOf('imgref:') === 0 ? `<img src="${window.IMG_PLACEHOLDER}" data-img-ref="${String(f.value).slice(7)}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : (f.value ? `<img src="${f.value}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`)}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
@@ -1271,6 +1271,7 @@
                         <div class="relative"><div class="timeline-line"></div><div id="timeline-events" class="space-y-10 pb-2">${(!day.events || day.events.length === 0) ? `<div class="pl-10 py-6 text-center"><div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300"><i class="fas fa-calendar-times"></i></div><p class="text-sm font-medium text-slate-500">今天还没有安排行程哦<br>点击下方按钮添加</p></div>` : ''}</div></div>
                     </div>
                     <div class="grid grid-cols-2 gap-2 mt-2 col-span-1 md:col-span-2">
+                        <button onclick="window.openMagicFill()" class="col-span-2 bg-gradient-to-br from-blue-50 to-indigo-50 border border-indigo-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 hover:from-blue-100 hover:to-indigo-100 transition-all flex items-center justify-center gap-2 group"><i class="fas fa-route text-indigo-500 text-lg"></i><span class="text-[10px] md:text-xs font-bold text-indigo-600">✨ 让 AI 帮我排满行程</span></button>
                         <button onclick="window.openMagicEvent()" class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 hover:from-blue-100 hover:to-indigo-100 transition-all flex flex-col items-center justify-center gap-2 group"><i class="fas fa-magic text-blue-500 text-lg"></i><span class="text-[10px] md:text-xs font-bold text-blue-600">✨ 一句话加行程</span></button>
                         <button onclick="window.openMagicMeal()" class="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-2 group"><i class="fas fa-utensils text-amber-500 text-lg"></i><span class="text-[10px] md:text-xs font-bold text-amber-600">✨ AI 荐餐厅</span></button>
                         <button onclick="window.addGenericEvent()" class="bg-white border border-slate-200 border-dashed rounded-2xl p-4 shadow-sm hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-2 group"><i class="fas fa-plus text-slate-400 text-lg"></i><span class="text-[10px] md:text-xs font-bold text-slate-600">手动加行程</span></button>
@@ -1578,6 +1579,7 @@
                     {value: 'AUD', text: 'AUD 澳元'}, {value: 'CNY', text: 'CNY 人民币'}
                 ]},
                 { id: 'geminiKey', inputType: 'password', label: 'Gemini API Key', value: tripData?.settings?.geminiApiKey || '', placeholder: '在 aistudio.google.com 获取' },
+                { id: 'geminiModel', type: 'model_select', keyRef: 'geminiKey', label: 'Gemini 模型 (点击右侧获取实时可用列表)', value: tripData?.settings?.geminiModel || 'gemini-3.5-flash' },
                 { id: 'sid', label: '当前行程同步码 (ID)', value: tripId || '', placeholder: '例如: WEI-TRIP' },
                 { id: 'spin', label: '访问密码 (PIN)', value: tripPin || '', placeholder: '4位数字' },
                 { id: 'firebase', type: 'textarea', label: 'Firebase Config (JSON)', value: localStorage.getItem('firebase_custom_config_v2') || '', placeholder: '在此粘贴你的数据库 Config，清空则断开云端' },
@@ -1608,6 +1610,7 @@
                     if (v.geminiKey && v.geminiKey.trim() !== (tripData.settings?.geminiApiKey || '')) {
                         tripData.settings.geminiApiKey = v.geminiKey.trim(); localStorage.setItem('gemini_api_key', v.geminiKey.trim()); dataChanged = true;
                     }
+                    if (v.geminiModel && v.geminiModel !== (tripData.settings?.geminiModel || 'gemini-3.5-flash')) { tripData.settings.geminiModel = v.geminiModel; dataChanged = true; }
                 }
 
                 if (dataChanged) { window.saveToCloud(); if (!reloadNeeded) { unlockApp(); window.render(); } }
@@ -1660,6 +1663,34 @@
         window.toggleShoppingItem = (idx) => { tripData.shoppingList[idx].bought = !tripData.shoppingList[idx].bought; window.saveToCloud(); window.render(); };
         // Also delete the image doc in the subcollection so it doesn't linger as an orphan; a failed image delete must never block deleting the item itself
         window.deleteShoppingItem = (idx) => { window.openModal("确认删除", "此操作不可撤销", [{ id: 'i', type: 'info', label: '警告', value: '确定删除该商品吗？' }], () => { const gone = tripData.shoppingList.splice(idx, 1)[0]; if (gone && gone.imgId) window.deleteTripImage(gone.imgId).catch(e => console.warn("图片删除异常:", e && e.message)); window.saveToCloud(); window.render(); }); };
+
+        // Fills a model <select> with the models this key can actually call (backs the 获取模型/获取列表 buttons)
+        window.fetchGeminiModels = async (keyInputId, selectId) => {
+            const selectEl = document.getElementById(selectId); if (!selectEl) return;
+            const apiKey = (document.getElementById(keyInputId)?.value || '').trim() || tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) { alert("请先输入有效的 Gemini API Key"); return; }
+            const prevValue = selectEl.value; const originalHTML = selectEl.innerHTML;
+            selectEl.innerHTML = '<option value="">正在获取云端模型...</option>'; selectEl.disabled = true;
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(apiKey)}`);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                // Only text chat models: TTS/image/embedding/live variants also list generateContent but can't produce the JSON these features need
+                const ids = (data.models || [])
+                    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+                    .map(m => m.name.replace('models/', ''))
+                    .filter(id => id.startsWith('gemini') && !/tts|image|embedding|audio|live|robotics|computer-use/i.test(id));
+                if (ids.length === 0) { selectEl.innerHTML = originalHTML; selectEl.value = prevValue; alert("获取成功，但未找到支持对话的 Gemini 模型"); return; }
+                selectEl.innerHTML = '';
+                ids.forEach(id => { const opt = document.createElement('option'); opt.value = id; opt.textContent = id + (id === 'gemini-3.5-flash' ? ' (推荐)' : ''); selectEl.appendChild(opt); });
+                // Keep the user's existing choice if this key can still use it
+                selectEl.value = ids.includes(prevValue) ? prevValue : (ids.includes('gemini-3.5-flash') ? 'gemini-3.5-flash' : ids[0]);
+            } catch (err) {
+                console.error("获取模型列表失败:", err);
+                selectEl.innerHTML = originalHTML; selectEl.value = prevValue;
+                alert("获取模型失败：" + err.message);
+            } finally { selectEl.disabled = false; }
+        };
 
         window.askGemini = async (payload, apiKey, modelName = "gemini-3.5-flash", isJson = false) => {
             const model = modelName || "gemini-3.5-flash";
@@ -1723,6 +1754,103 @@
                         throw err; 
                     }
                 }
+            }
+        };
+
+        // Post-creation counterpart of the setup screen's "让 AI 帮我排满行程": plans whole days inside an existing trip, appending around what's already there
+        window.openMagicFill = () => {
+            const apiKey = tripData?.settings?.geminiApiKey || localStorage.getItem('gemini_api_key');
+            if (!apiKey) {
+                window.openModal("未配置 API Key", "智能规划不可用", [{ id: 'i', type: 'info', label: '提示', value: '请先在右上角【设置】面板中填写您的 Gemini API Key。' }], () => { window.openSettings(); });
+                return;
+            }
+
+            window.openModal("✨ AI 排满行程", "AI 按天规划完整日程，已有安排会保留，只在空档里补充", [
+                { id: 'scope', label: '规划范围', type: 'select', value: 'empty', options: [
+                    { value: 'empty', text: '所有还没有安排的日子' },
+                    { value: 'current', text: `当前这一天 (Day ${tripData.currentDay})` },
+                    { value: 'all', text: '全部日子 (在已有安排基础上补满)' }
+                ]},
+                { id: 'text', type: 'textarea', label: '怎么玩？(描述偏好，可留空)', placeholder: '例如：想打卡圣水洞咖啡店，晚上吃韩牛，留半天买衣服...' }
+            ], (v) => {
+                // Validate synchronously: openModal only stays open on a literal `false`, which an async callback can't return
+                const targets = tripData.days.filter(d => v.scope === 'all' || (v.scope === 'current' ? d.id === tripData.currentDay : !(d.events && d.events.length)));
+                if (targets.length === 0) { alert("没有符合条件的日子：所有日子都已有安排。可以改选「当前这一天」或「全部日子」。"); return false; }
+                window.runMagicFill(apiKey, targets.map(d => d.id), v.text);
+            });
+        };
+
+        window.runMagicFill = async (apiKey, targetIds, userPrompt) => {
+            window.showAILoading("✨ AI 正在为您排满行程...", `正在规划 ${targetIds.length} 天的日程，大概需要 10-20 秒`);
+            try {
+                const members = window.getMembers();
+                const destination = tripData.settings?.destination || '目的地';
+                const mapProvider = tripData.settings?.mapProvider || "google";
+                const mapRule = mapProvider === 'naver' ? "Naver Map 链接格式要求：https://map.naver.com/v5/search/地点英文或当地语言名+城市名 (将空格替换为+)" : "Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=地点英文或当地语言名+城市名 (将空格替换为+)";
+                const tripContext = tripData.days.map(d => `Day ${d.id} (日期: ${d.date}, 主题: ${d.title}${d.hotelName ? `, 住宿: ${d.hotelName}` : ''}): ${(d.events || []).map(e => `${e.time} ${e.title}`).join('; ') || '(暂无安排)'}`).join('\n');
+
+                const prompt = `你是一个顶级旅行规划专家。用户正在 ${destination} 旅行，参与人：${members.join(', ')}。
+${userPrompt ? `用户的具体要求是：${userPrompt}\n` : ''}
+整趟行程目前的安排如下（供参考，保持路线连贯，不要重复已安排过的地点）：
+${tripContext}
+
+请只为以下 Day ID 规划行程：[${targetIds.join(', ')}]。
+规划规则：
+1. 每天安排 4-6 项，覆盖上午、午餐、下午、晚餐和晚上，同一天的地点尽量顺路。如果某天已有安排，只在空档补充，时间不要与已有安排冲突。
+2. 强烈推荐最新热门的文化、打卡、美食地标。
+3. "label" 字段：大家一起行动填"共同"；特定某人负责或仅某人参与，从成员列表 ["${members.join('", "')}"] 中选一个准确的名字。
+4. ${mapRule}
+5. type 必须是: activity, transport, hotel, meal_options, flight 之一。用餐请用 meal_options，并在 options 里给出 1-2 家具体餐厅。
+6. 返回严格的纯JSON（无Markdown标记），只包含上面列出的 Day ID，数据结构如下：
+{
+  "days": [{
+      "id": ${targetIds[0]},
+      "title": "这一天的主题",
+      "hotelName": "推荐住宿名字",
+      "events": [
+        {"time": "10:00", "type": "activity", "label": "共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"},
+        {"time": "12:30", "type": "meal_options", "label": "共同", "title": "午餐", "options": [{"title": "店名 (中文 + 当地语言名)", "link": "地图链接", "rating": "4.6", "price": "人均价格", "dishes": "招牌菜"}]}
+      ]
+  }]
+}`;
+
+                const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
+                const result = await window.askGemini(payload, apiKey, model, true);
+                const aiDays = Array.isArray(result) ? result : (result && Array.isArray(result.days) ? result.days : null);
+                if (!aiDays) throw new Error("AI 返回的数据格式不符合预期。");
+                // Re-resolve days after the await: a realtime snapshot may have replaced tripData while the AI was thinking
+                const findDay = (id) => tripData.days.find(d => d.id === id);
+
+                const validTypes = ['activity', 'transport', 'hotel', 'meal_options', 'flight'];
+                let addedCount = 0; const filledDays = new Set();
+                // Match by Day ID; fall back to position only when the AI renumbered every day but returned exactly as many as asked for
+                const idsUsable = aiDays.some(rd => targetIds.includes(parseInt(rd.id)));
+                aiDays.forEach((rd, i) => {
+                    const matchedId = idsUsable ? (targetIds.includes(parseInt(rd.id)) ? parseInt(rd.id) : null) : (aiDays.length === targetIds.length ? targetIds[i] : null);
+                    const day = matchedId === null ? null : findDay(matchedId);
+                    if (!day) return;
+                    if (!day.events) day.events = [];
+                    if (rd.title && (!day.title || /^第\s*\S+\s*天行程$/.test(day.title))) day.title = rd.title;
+                    if (rd.hotelName && !day.hotelName) day.hotelName = rd.hotelName;
+                    (rd.events || []).forEach(ev => {
+                        day.events.push({ time: String(ev.time || "12:00"), type: validTypes.includes(ev.type) ? ev.type : "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 排程", options: Array.isArray(ev.options) ? ev.options : [] });
+                        addedCount++; filledDays.add(day.id);
+                    });
+                    day.events.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+                });
+
+                if (addedCount > 0) {
+                    window.saveToCloud();
+                    window.render();
+                    alert(`AI 已为 ${filledDays.size} 天排入 ${addedCount} 项行程！不满意的可以单独编辑或删除。`);
+                } else {
+                    alert("AI 没有返回可用的行程，请换一种描述再试。");
+                }
+            } catch (e) {
+                alert("AI 排程失败：" + e.message);
+            } finally {
+                window.hideAILoading();
             }
         };
 
