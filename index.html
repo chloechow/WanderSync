@@ -2339,6 +2339,7 @@ ${tripContext}
             window.openModal("添加餐饮", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
                 { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
+                { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: '共同' }, 
                 { id: 't1', label: '餐厅名称', placeholder: '必填' }, 
                 { id: 'l1', label: '餐厅链接', placeholder: '选填' }, 
                 { id: 'p1', label: '人均参考价', placeholder: '￥' },
@@ -2346,7 +2347,7 @@ ${tripContext}
             ], (v) => { 
                 if(!v.t1) { alert("请填写餐厅名称"); return false; } 
                 const day = tripData.days.find(d => d.id === tripData.currentDay); 
-                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: '' }] }); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, label: v.label || '共同', options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: v.d1 || '' }] }); 
                 day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
             }); 
         };
@@ -2462,16 +2463,30 @@ ${tripContext}
         window.editEvent = (idx) => { 
             const day = tripData.days.find(d => d.id === tripData.currentDay); const ev = day.events[idx]; 
             if(ev.type === 'meal_options') {
-                const firstOption = ev.options && ev.options.length > 0 ? ev.options[0] : { title: '', link: '', price: '', dishes: '' };
-                window.openModal("编辑餐饮", "修改首选餐厅", [
+                const opts = ev.options || []; const sec = (id, text) => ({ id, type: 'html', html: `<div class="text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">${text}</div>` });
+                window.openModal("编辑餐饮", "可修改首选/备选餐厅与参与人员", [
                     { id: 'time', label: '时间', value: ev.time },
-                    { id: 'title', label: '餐厅名', value: firstOption.title },
-                    { id: 'link', label: '链接', value: firstOption.link },
-                    { id: 'price', label: '人均', value: firstOption.price },
-                    { id: 'dishes', label: '推荐菜', value: firstOption.dishes },
+                    { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    ...opts.flatMap((o, i) => [
+                        sec(`o${i}_head`, i === 0 ? '首选餐厅' : `备选 ${i}`),
+                        { id: `o${i}_title`, label: '餐厅名 (清空即删除)', value: o.title || '' },
+                        { id: `o${i}_link`, label: '链接', value: o.link || '' },
+                        { id: `o${i}_price`, label: '人均', value: o.price || '' },
+                        { id: `o${i}_dishes`, label: '推荐菜', value: o.dishes || '' }
+                    ]),
+                    // openModal only collects fields that exist when it opens, so a blank slot is the way to add one more restaurant
+                    sec('new_head', opts.length ? '新增备选餐厅' : '餐厅'),
+                    { id: 'new_title', label: opts.length ? '备选餐厅名' : '餐厅名称', placeholder: opts.length ? '选填' : '必填' },
+                    { id: 'new_link', label: '链接', placeholder: '选填' },
+                    { id: 'new_price', label: '人均', placeholder: '选填' },
+                    { id: 'new_dishes', label: '推荐菜', placeholder: '选填' },
                     { id: 'moveTo', label: '所在日期', type: 'select', options: tripData.days.map(d => ({ value: d.id, text: `Day ${d.id} · ${d.date} ${d.title}` })), value: day.id }
                 ], (v) => {
-                    ev.time = v.time; if (!ev.options || ev.options.length === 0) ev.options = [{}]; ev.options[0].title = v.title; ev.options[0].link = v.link; ev.options[0].price = v.price; ev.options[0].dishes = v.dishes;
+                    // Spread the old option so rating and any extra AI keys survive; no undefined values (Firestore rejects them)
+                    const newOpts = opts.map((o, i) => ({ ...o, title: (v[`o${i}_title`] || '').trim(), link: v[`o${i}_link`] || '', price: v[`o${i}_price`] || '', dishes: v[`o${i}_dishes`] || '' })).filter(o => o.title);
+                    const newTitle = (v.new_title || '').trim(); if (newTitle) newOpts.push({ title: newTitle, link: v.new_link||'', rating: '4.5', price: v.new_price||'￥', dishes: v.new_dishes||'' });
+                    if (newOpts.length === 0) { alert("请至少保留一家餐厅"); return false; }
+                    ev.options = newOpts; ev.time = v.time || ''; ev.label = v.label || '共同';
                     // The <select>'s value always comes back as a string, while day.id is a number — compare with String() on both sides (and re-find the target with Number()), or days.find(d => d.id === v.moveTo) silently fails to match and the move just does nothing, with no error
                     if (String(v.moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(v.moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
                     day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
