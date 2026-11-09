@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="ws-v1-ui" gradientUnits="userSpaceOnUse" x1="3" y1="11" x2="61" y2="53"><stop offset="0" stop-color="#059669"/><stop offset="1" stop-color="#64748b"/></linearGradient>
+    <mask id="ws-v1-ui-gap" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64"><rect width="64" height="64" fill="#fff"/><path d="M3 41C10 34.5 16 31.5 23 31.5C33 31.5 41 34 49 36.5C53.5 37.9 57.5 38.6 61 38.5C57 40.5 52.5 41.6 47.5 41.4C39 40 32 37 23.5 36.8C15 36.8 9 38.2 3 41Z" stroke="#000" stroke-width="5" stroke-linejoin="round"/></mask>
+  </defs>
+  <path d="M26.48 23.63A14 14 0 1 1 44.79 40.41" fill="none" stroke="url(#ws-v1-ui)" stroke-width="3" stroke-linecap="round" mask="url(#ws-v1-ui-gap)"/>
+  <g fill="url(#ws-v1-ui)">
+    <path d="M3 41C10 34.5 16 31.5 23 31.5C33 31.5 41 34 49 36.5C53.5 37.9 57.5 38.6 61 38.5C57 40.5 52.5 41.6 47.5 41.4C39 40 32 37 23.5 36.8C15 36.8 9 38.2 3 41Z"/>
+    <path d="M13 51.5C19 46 24.5 43.5 31 43.5C40 43.5 47 46 54 48C56.5 48.7 58.5 49.1 60.5 49C57 51 53.5 52 50 51.8C43 51.4 37.5 48.8 31 48.6C24 48.4 18.5 49.5 13 51.5Z"/>
+  </g>
+</svg>
