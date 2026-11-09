@@ -28,6 +28,8 @@
     <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
     <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
     <style>
+        /* Wordmark: r->S ink gap is ~0.9px tighter than typical pairs (short r arm, no kerning in subset font); nudge Sync. */
+        .wordmark-sync { margin-left: 0.03em; }
         :root {
             --primary: #475569;
             --secondary: #64748b;
@@ -95,11 +97,9 @@
     <div id="login-screen" class="fixed inset-0 bg-slate-800/60 z-[200] flex items-center justify-center p-4">
         <div class="bg-white rounded-[2rem] p-6 md:p-8 w-full max-w-sm shadow-xl border border-slate-200 text-center modal-animate">
             <div class="flex justify-center mb-5">
-                <div class="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center shadow-md transform rotate-3">
-                    <i class="fas fa-globe-asia text-3xl text-white transform -rotate-3"></i>
-                </div>
+                <img src="./icons/logo.svg" alt="" aria-hidden="true" class="w-24 h-24">
             </div>
-            <h2 class="text-3xl font-poppins font-black text-slate-800 tracking-tight">Wander<span class="text-blue-500">Sync</span></h2>
+            <h2 class="text-3xl font-poppins font-black text-slate-800 tracking-wide">Wander<span class="text-emerald-600 wordmark-sync">Sync</span></h2>
             <p class="text-[10px] text-slate-500 mb-8 mt-2 uppercase tracking-[0.2em] font-bold">全球协作规划引擎</p>
             <input id="login-id" type="text" placeholder="同步码 (ID)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none uppercase text-center font-bold tracking-widest text-slate-800 transition-all">
             <input id="login-pin" type="password" placeholder="访问密码 (PIN)" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-[0.5em] text-slate-800 transition-all">
@@ -235,9 +235,9 @@
             <div class="max-w-4xl mx-auto px-4">
                 <header class="bg-white rounded-[1.5rem] md:rounded-[2rem] border border-slate-200 p-3 px-5 flex justify-between items-center shadow-sm">
                     <div class="min-w-0 flex items-center gap-3">
-                        <div class="w-9 h-9 md:w-10 md:h-10 bg-slate-800 rounded-[1rem] flex items-center justify-center shadow-sm flex-shrink-0"><i class="fas fa-layer-group text-white text-xs md:text-sm"></i></div>
+                        <img src="./icons/favicon.svg" alt="" aria-hidden="true" class="w-9 h-9 md:w-10 md:h-10 flex-shrink-0">
                         <div class="min-w-0 flex-1 pr-2">
-                            <h1 id="main-header-title" class="text-base md:text-lg font-poppins font-black tracking-tight text-slate-800 truncate leading-tight">Wander<span class="text-blue-500">Sync</span></h1>
+                            <h1 id="main-header-title" class="text-base md:text-lg font-poppins font-black tracking-wide text-slate-800 truncate leading-tight">Wander<span class="text-emerald-600 wordmark-sync">Sync</span></h1>
                             <div class="flex items-center gap-2 mt-0.5"><span id="sync-status" class="sync-badge sync-offline">离线模式</span><span id="trip-name-badge" class="text-[10px] text-slate-400 font-bold truncate hidden sm:block"></span></div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0">
