@@ -21,7 +21,7 @@
  *     no "assets swapped out mid-session" risk to race against.
  */
 
-const SW_VERSION = 'v5';
+const SW_VERSION = 'v6';
 const CACHE_NAME = `wandersync-shell-${SW_VERSION}`;
 
 // All paths are relative: a GitHub Pages project site is served under a
