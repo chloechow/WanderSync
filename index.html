@@ -2156,6 +2156,7 @@ ${tripContext}
             const members = window.getMembers();
             const payerOptions = [...members, '共同'].map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
             const locCur = tripData.settings?.currency || 'KRW';
+            const selCur = tempReceiptData.currency || locCur; // keep chosen currency across re-renders
 
             let html = `
                 <div class="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] p-3 rounded-2xl mb-4 font-medium flex gap-2">
@@ -2172,8 +2173,8 @@ ${tripContext}
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 pl-1">付款币种</label>
-                            <select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all">
-                                ${window.getExpenseCurrencies().map(c => `<option value="${c}" ${c === locCur ? 'selected' : ''}>${c} ${c === locCur ? '当地货币' : (c === 'USD' ? '美元' : '人民币')}</option>`).join('')}
+                            <select id="receipt-global-currency" class="w-full p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800 transition-all" onchange="window.updateReceiptCurrency(this.value)">
+                                ${window.getExpenseCurrencies().map(c => `<option value="${c}" ${c === selCur ? 'selected' : ''}>${c} ${c === locCur ? '当地货币' : (c === 'USD' ? '美元' : '人民币')}</option>`).join('')}
                             </select>
                         </div>
                     </div>
@@ -2201,7 +2202,7 @@ ${tripContext}
                             <div class="flex gap-2 mb-2.5">
                                 <input id="ri-name-${idx}" type="text" class="flex-1 min-w-0 p-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 transition-all focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none" value="${item.item}">
                                 <div class="relative w-28 flex-shrink-0">
-                                    <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(locCur)}</span>
+                                    <span class="ri-cur-sym absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">${window.getCurrencySymbol(selCur)}</span>
                                     <input id="ri-amt-${idx}" type="number" step="0.01" class="w-full p-2 pl-6 bg-slate-50 border border-slate-100 rounded-xl text-sm font-black text-blue-600 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" value="${item.amount}">
                                 </div>
                             </div>
@@ -2286,6 +2287,7 @@ ${tripContext}
         };
         
         window.updateTempPayer = (val) => { window.tempReceiptData.payer = val; };
+        window.updateReceiptCurrency = (val) => { window.tempReceiptData.currency = val; document.querySelectorAll('.ri-cur-sym').forEach(el => el.textContent = window.getCurrencySymbol(val)); };
         window.removeReceiptItem = (idx) => { window.tempReceiptData.items.splice(idx, 1); window.renderReceiptSplitterUI(); };
 
         window.openMagicExpense = () => { 
