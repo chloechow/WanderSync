@@ -1001,13 +1001,13 @@
                 if (!tripData || !tripData.expenses || tripData.expenses.length === 0) {
                     alert("暂无账单数据可导出，请先记一笔账！"); return;
                 }
-                let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),退税(原币),退税折合(RMB),净支出(RMB),支付人,使用人,小票关联,备注说明\n";
+                let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),退税金额,退税币种,退税折合(RMB),净支出(RMB),支付人,使用人,小票关联,备注说明\n";
                 tripData.expenses.forEach(e => {
                     const cny = window.getExpenseCny(e);
                     // 实付人民币 = charge before refund (actual if filled, else estimate); 净支出 = charge minus refund
                     let rate = cny.rate;
                     let cnyVal = cny.baseCny.toFixed(2);
-                    let refundCols = cny.refund > 0 ? `"${+cny.refund.toFixed(2)}","${cny.refundCny.toFixed(2)}"` : `"",""`;
+                    let refundCols = cny.refund > 0 ? `"${+cny.refund.toFixed(2)}","${cny.refundCurrency}","${cny.refundCny.toFixed(2)}"` : `"","",""`;
                     let cat = (e.category || '其他').replace(/"/g, '""');
                     let item = (e.item || '').replace(/"/g, '""');
                     let note = (e.note || '').replace(/"/g, '""');
@@ -1108,7 +1108,8 @@
                     // The image field's value is one of three shapes: '' / 'imgref:<id>' (original image in the subcollection, filled in async) / 'data:...' (freshly compressed new image)
                     else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${String(f.value || '').indexOf('imgref:') === 0 ? `<img src="${window.IMG_PLACEHOLDER}" data-img-ref="${String(f.value).slice(7)}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : (f.value ? `<img src="${f.value}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`)}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
-                    wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
+                    // Fields without a label (e.g. info boxes, prompt textareas) render no label element
+                    wrap.innerHTML = `${f.label ? `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>` : ''}${inputHtml}`;
                 }
                 content.appendChild(wrap);
             });
@@ -1223,19 +1224,36 @@
         window.getPayerOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [...window.getMembers(), window.SHARED_PARTY];
         window.getConsumerOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [window.SHARED_PARTY, ...window.getMembers()];
         window.resolveSoloParty = (val) => (window.isSoloTrip() && window.isSharedParty(val)) ? window.getMembers()[0] : val;
-        // Effective RMB of one expense. taxRefund is in the expense's original currency and is converted at the
-        // actually-charged rate when known (actualCnyAmount / amount), else at the estimate rate. netCny = base - refund.
+        // Split `total` across items in proportion to weightFn(item). Parts are rounded to cents and the rounding remainder
+        // goes to the largest-weight item, so they always sum exactly to the (cent-rounded) total. Zero total weight puts it all on the first item.
+        window.prorate = (items, total, weightFn) => {
+            if (!items.length) return [];
+            const weights = items.map(it => Math.max(0, Number(weightFn(it)) || 0));
+            const sumW = weights.reduce((a, b) => a + b, 0);
+            let big = 0; weights.forEach((w, i) => { if (w > weights[big]) big = i; });
+            const totalCents = Math.round((Number(total) || 0) * 100);
+            const cents = weights.map((w, i) => (i === big || sumW <= 0) ? 0 : Math.round(w / sumW * totalCents));
+            cents[big] = totalCents - cents.reduce((a, b) => a + b, 0);
+            return cents.map(c => c / 100);
+        };
+        // Effective RMB of one expense. taxRefund is the amount actually received, in taxRefundCurrency (missing = the
+        // expense's own currency, i.e. legacy data). Conversion: CNY as is; same currency as the expense at the
+        // actually-charged rate when known (actualCnyAmount / amount), else the estimate rate; any other currency at its
+        // estimate rate. `refund` stays in the refund currency. netCny = base - refund.
         window.getExpenseCny = (e) => {
             const amount = parseFloat(e.amount) || 0;
             const rate = parseFloat(e.exchangeRate) || parseFloat(window.getEstExchangeRate(e.currency)) || 0;
             const refund = Math.max(0, parseFloat(e.taxRefund) || 0);
+            const refundCurrency = e.taxRefundCurrency || e.currency;
             const isCny = e.currency === 'CNY';
             const actual = parseFloat(e.actualCnyAmount) || 0;
             const settled = isCny || !(e.actualCnyAmount == null || e.actualCnyAmount === '');
             const baseCny = isCny ? amount : (actual || amount * rate);
             const effRate = (actual > 0 && amount > 0) ? actual / amount : rate;
-            const refundCny = isCny ? refund : refund * effRate;
-            return { baseCny, refundCny, netCny: baseCny - refundCny, settled, refund, rate };
+            const refundCny = refundCurrency === 'CNY' ? refund
+                : refundCurrency === e.currency ? refund * effRate
+                : refund * (parseFloat(window.getEstExchangeRate(refundCurrency)) || 0);
+            return { baseCny, refundCny, netCny: baseCny - refundCny, settled, refund, refundCurrency, rate };
         };
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
         // Itinerary label helpers: a solo trip has no "共同" (shared) label; legacy "共同" values map to the sole member
@@ -1569,7 +1587,8 @@
                     } else {
                         cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">${hasRefund ? '预估净额' : '预估'} ≈ ¥${netVal}</p>`;
                     }
-                    const refundHtml = hasRefund ? `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5">退税 −${window.getCurrencySymbol(e.currency)}${+cny.refund.toFixed(2)}</p>` : '';
+                    // Refund in another currency than the expense gets its code appended (¥ is both JPY and CNY)
+                    const refundHtml = hasRefund ? `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5">退税 −${window.getCurrencySymbol(cny.refundCurrency)}${+cny.refund.toFixed(2)}${cny.refundCurrency !== e.currency ? ` ${cny.refundCurrency}` : ''}</p>` : '';
 
                     let groupBadgeHtml = '';
                     if (isGrouped) {
@@ -2436,24 +2455,29 @@ ${tripContext}
             let groupTotalCny = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualCnyAmount || 0), 0) : (ev.actualCnyAmount || '');
             if (groupTotalCny === 0) groupTotalCny = '';
             const round2 = (x) => Math.round(x * 100) / 100;
-            // taxRefund (original currency); a receipt group is edited as one whole-receipt total
+            // taxRefund = amount actually received, in taxRefundCurrency (missing = expense currency); a receipt group is edited as one whole-receipt total
             let curRefund = isGroup ? round2(groupItems.reduce((sum, e) => sum + (parseFloat(e.taxRefund) || 0), 0)) : (parseFloat(ev.taxRefund) || 0);
+            const refundedItem = (isGroup ? groupItems : [ev]).find(e => (parseFloat(e.taxRefund) || 0) > 0);
+            const curRefundCur = refundedItem ? (refundedItem.taxRefundCurrency || refundedItem.currency) : ev.currency;
 
             let fields = [
                 { id: 'date', label: '消费日期 (MM/DD)', value: ev.date || window.getTodayString(), placeholder: '例如：06/28' },
                 { id: 'item', label: '消费项目', value: ev.item },
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
                 { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
-                { id: 'currency', label: '币种', type: 'select', options: window.getExpenseCurrencies(ev.currency).map(c => ({value: c, text: c})), value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" },
+                { id: 'currency', label: '币种', type: 'select', options: window.getExpenseCurrencies(ev.currency).map(c => ({value: c, text: c})), value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none'); if (!document.getElementById('f-taxRefund').value) document.getElementById('f-taxRefundCurrency').value = this.value;" },
             ];
 
             if (isGroup && ev.currency !== 'CNY') {
-                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${groupTotalOrig.toFixed(2)} ${ev.currency})。请在下方填写【整单实付RMB】，系统将自动按比例拆分至各商品。${curRefund > 0 ? `\n已登记整单退税 ${curRefund} ${ev.currency}，同样按比例分摊。` : '\n机场退税后可补填【整单退税金额】，同样按比例分摊。'}` });
+                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${groupTotalOrig.toFixed(2)} ${ev.currency})。请在下方填写【整单实付RMB】，系统将自动按比例拆分至各商品。${curRefund > 0 ? `\n已登记整单实际到手退税 ${curRefund} ${curRefundCur}，同样按比例分摊。` : '\n机场退税后可补填【整单实际到手退税金额】及其币种，同样按比例分摊。'}` });
                 fields.push({ id: 'actualCny', label: '整单实付扣款 (RMB)', inputType: 'number', value: groupTotalCny, style: 'display:block' });
             } else {
                 fields.push({ id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency !== 'CNY' ? 'display:block' : 'display:none' });
             }
-            fields.push({ id: 'taxRefund', label: isGroup ? '整单退税金额 (原币) - 机场退税后可补填' : '退税金额 (原币) - 机场退税后可补填', inputType: 'number', value: curRefund || '' });
+            // Refund currency: cash at the airport (local currency) or a card refund on the bill (CNY / USD)
+            const refundCurOptions = [...new Set([...window.getExpenseCurrencies(ev.currency), curRefundCur])];
+            fields.push({ id: 'taxRefundCurrency', label: '退税到手币种', type: 'select', options: refundCurOptions.map(c => ({value: c, text: c})), value: curRefundCur });
+            fields.push({ id: 'taxRefund', label: isGroup ? '整单实际到手退税金额 - 机场退税后可补填' : '实际到手退税金额 - 机场退税后可补填', inputType: 'number', value: curRefund || '' });
 
             fields.push(
                 // solo trip: legacy '共同' preselects the sole member
@@ -2468,11 +2492,38 @@ ${tripContext}
 
             window.openModal("编辑账目", "", fields, (v) => {
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; }
-                // Validate the refund before mutating anything (return false keeps the modal open)
                 const newAmount = parseFloat(v.amount) || 0;
+                const targets = isGroup ? groupItems : [ev];
+                // Post-edit view of every target (nothing is mutated until validation passes; return false keeps the modal open)
+                const post = targets.map(item => item === ev ? { ...item, amount: newAmount, currency: v.currency, exchangeRate: v.currency !== ev.currency ? window.getEstExchangeRate(v.currency) : ev.exchangeRate } : { ...item });
+                // Actual RMB charge: a group total is prorated by the post-edit amounts; empty clears it, CNY -> null
+                let actualParts = null; // null = clear
+                if (v.currency !== 'CNY' && v.actualCny) {
+                    const totalActualCny = parseFloat(v.actualCny);
+                    actualParts = isGroup ? window.prorate(post, totalActualCny, p => parseFloat(p.amount) || 0) : [totalActualCny];
+                }
+                post.forEach((p, i) => {
+                    if (actualParts) p.actualCnyAmount = actualParts[i];
+                    else if (targets[i] === ev || v.currency !== 'CNY') p.actualCnyAmount = null;
+                });
+
+                // Tax refund: must not exceed what was spent. Same currency -> exact original-currency cap; otherwise compare in RMB.
+                const refundCur = v.taxRefundCurrency || v.currency;
                 const refundTotal = String(v.taxRefund || '').trim() === '' ? 0 : Number(v.taxRefund);
-                const refundCap = isGroup ? groupItems.reduce((sum, e) => sum + (e === ev ? newAmount : (parseFloat(e.amount) || 0)), 0) : newAmount;
-                if (!isFinite(refundTotal) || refundTotal < 0 || refundTotal > refundCap + 1e-9) { alert(`退税金额需为 0 ~ ${round2(refundCap)} 之间的数字（不能超过${isGroup ? '整单' : '原币'}金额）`); return false; }
+                const scope = isGroup ? '整单' : '本项';
+                if (!isFinite(refundTotal) || refundTotal < 0) { alert('退税金额需为不小于 0 的数字'); return false; }
+                if (refundCur === v.currency) {
+                    const refundCap = post.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                    if (refundTotal > refundCap + 1e-9) { alert(`退税金额不能超过${scope}消费金额 ${round2(refundCap)} ${v.currency}`); return false; }
+                } else if (refundTotal > 0) {
+                    const refundRate = refundCur === 'CNY' ? 1 : (parseFloat(window.getEstExchangeRate(refundCur)) || 0);
+                    const capCny = post.reduce((sum, p) => sum + window.getExpenseCny(p).baseCny, 0);
+                    if (refundTotal * refundRate > capCny + Math.max(0.01, capCny * 0.01)) {
+                        const capText = refundCur === 'CNY' ? `¥${round2(capCny)}` : `约 ${round2(capCny / refundRate)} ${refundCur}（≈ ¥${round2(capCny)}）`;
+                        alert(`退税金额不能超过${scope}消费折合的 ${capText}，请检查金额或币种`); return false;
+                    }
+                }
+
                 ev.date = v.date;
                 ev.item = v.item;
                 ev.category = v.category;
@@ -2490,41 +2541,15 @@ ${tripContext}
                     });
                 }
 
-                if (v.currency !== 'CNY' && v.actualCny) {
-                    let totalActualCny = parseFloat(v.actualCny);
-                    if (isGroup) {
-                        groupItems.forEach(item => {
-                            item.actualCnyAmount = (item.amount / groupTotalOrig) * totalActualCny;
-                        });
-                    } else {
-                        ev.actualCnyAmount = totalActualCny;
-                    }
-                } else {
-                    ev.actualCnyAmount = null;
-                    if (isGroup && v.currency !== 'CNY') {
-                        groupItems.forEach(item => item.actualCnyAmount = null);
-                    }
-                }
+                targets.forEach((item, i) => { if (post[i].actualCnyAmount !== undefined) item.actualCnyAmount = post[i].actualCnyAmount; }); // never write undefined
 
-                // Tax refund: 0/empty clears it; a group total is prorated by item.amount, rounding remainder to the largest item so parts sum exactly
-                const targets = isGroup ? groupItems : [ev];
-                if (refundTotal > 0) {
-                    if (isGroup) {
-                        const largest = groupItems.reduce((a, b) => ((parseFloat(b.amount) || 0) > (parseFloat(a.amount) || 0) ? b : a));
-                        let allocated = 0;
-                        groupItems.forEach(item => {
-                            if (item === largest) return;
-                            item.taxRefund = round2(((parseFloat(item.amount) || 0) / refundCap) * refundTotal);
-                            allocated += item.taxRefund;
-                        });
-                        largest.taxRefund = round2(refundTotal - allocated);
-                        groupItems.forEach(item => { if (!item.taxRefund) delete item.taxRefund; });
-                    } else {
-                        ev.taxRefund = round2(refundTotal);
-                    }
-                } else {
-                    targets.forEach(item => delete item.taxRefund);
-                }
+                // Tax refund: 0/empty clears amount and currency; otherwise every item stores the refund currency and a
+                // share prorated by post-edit amount (parts sum exactly). Items whose share rounds to 0 carry no refund.
+                const refundParts = refundTotal > 0 ? window.prorate(post, refundTotal, p => parseFloat(p.amount) || 0) : targets.map(() => 0);
+                targets.forEach((item, i) => {
+                    if (refundParts[i] > 0) { item.taxRefund = refundParts[i]; item.taxRefundCurrency = refundCur; }
+                    else { delete item.taxRefund; delete item.taxRefundCurrency; }
+                });
                 window.saveToCloud(); window.render();
             }, () => {
                 tripData.expenses.splice(idx, 1);
