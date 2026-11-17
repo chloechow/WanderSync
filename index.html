@@ -336,7 +336,7 @@
                             time: ev.time || "00:00",
                             title: ev.title || "未命名",
                             type: ev.type || "activity",
-                            label: ev.label || "共同",
+                            label: ev.label || ((data.settings && Array.isArray(data.settings.members) && data.settings.members.length === 1 && data.settings.members[0]) || "共同"),
                             options: Array.isArray(ev.options) ? ev.options : []
                         })) : []
                     }));
@@ -871,10 +871,10 @@
 
         window.generateAITrip = async (apiKey, modelName, destination, dCount, membersList, sDate, userPrompt, mapProvider) => {
             const mapRule = mapProvider === 'naver' ? "Naver Map 链接格式要求：https://map.naver.com/v5/search/地点英文或当地语言名+城市名 (将空格替换为+)" : "Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=地点英文或当地语言名+城市名 (将空格替换为+)";
-            const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。\n参与人：${membersList.join(', ')}。\n用户的具体要求是：${userPrompt}。\n\n规划规则：\n1. 请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。\n2. 每个 Event 的 "label" 字段，必须根据描述中的人物归属感进行精确分配。如果是大家一起行动必须填"共同"；如果是特定某人负责或仅某人参与，必须从成员列表 ["${membersList.join('", "')}"] 中选一个准确的名字填入。\n3. ${mapRule}\n4. 务必生成恰好 ${dCount} 天的完整数组数据。返回严格的纯JSON（无Markdown标记），数据结构如下：\n{\n  "days": [{\n      "id": 1,\n      "title": "这一天的主题",\n      "hotelName": "推荐住宿名字",\n      "events": [{"time": "10:00", "type": "activity", "label": "成员A 或 共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"}]\n  }]\n}\ntype 必须是: activity, transport, hotel, meal_options, flight`;
+            const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。\n参与人：${membersList.join(', ')}。\n用户的具体要求是：${userPrompt}。\n\n规划规则：\n1. 请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。\n2. 每个 Event 的 "label" 字段，必须根据描述中的人物归属感进行精确分配。${membersList.length === 1 ? `本行程只有一位参与人，所有 Event 的 "label" 一律填 "${membersList[0]}"，不要使用"共同"。` : `如果是大家一起行动必须填"共同"；如果是特定某人负责或仅某人参与，必须从成员列表 ["${membersList.join('", "')}"] 中选一个准确的名字填入。`}\n3. ${mapRule}\n4. 务必生成恰好 ${dCount} 天的完整数组数据。返回严格的纯JSON（无Markdown标记），数据结构如下：\n{\n  "days": [{\n      "id": 1,\n      "title": "这一天的主题",\n      "hotelName": "推荐住宿名字",\n      "events": [{"time": "10:00", "type": "activity", "label": "${membersList.length === 1 ? membersList[0] : '成员A 或 共同'}", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"}]\n  }]\n}\ntype 必须是: activity, transport, hotel, meal_options, flight`;
             const payload = { contents: [{ parts: [{ text: systemPrompt }] }] };
             const rawData = await window.askGemini(payload, apiKey, modelName, true);
-            return (rawData.days || []).map((d, idx) => { return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) }; });
+            return (rawData.days || []).map((d, idx) => { return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: membersList.length === 1 ? membersList[0] : (ev.label || "共同"), title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) }; });
         };
 
         const loadLocalFallback = () => {
@@ -1238,6 +1238,10 @@
             return { baseCny, refundCny, netCny: baseCny - refundCny, settled, refund, rate };
         };
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
+        // Itinerary label helpers: a solo trip has no "共同" (shared) label; legacy "共同" values map to the sole member
+        window.getLabelOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [window.SHARED_PARTY, ...window.getMembers()];
+        window.getDefaultLabel = () => window.isSoloTrip() ? window.getMembers()[0] : window.SHARED_PARTY;
+        { const _baseLabelHtml = window.getLabelHtml; window.getLabelHtml = (label) => window.isSoloTrip() ? '' : _baseLabelHtml(label); }
         window.getCatIcon = (cat) => { if(cat.includes('餐饮')) return 'fa-utensils'; if(cat.includes('交通')) return 'fa-train'; if(cat.includes('购物')) return 'fa-shopping-bag'; if(cat.includes('住宿')) return 'fa-bed'; if(cat.includes('娱乐')) return 'fa-ticket-alt'; return 'fa-receipt'; };
 
         window.render = () => {
@@ -1832,7 +1836,7 @@ ${tripContext}
 规划规则：
 1. 每天安排 4-6 项，覆盖上午、午餐、下午、晚餐和晚上，同一天的地点尽量顺路。如果某天已有安排，只在空档补充，时间不要与已有安排冲突。
 2. 强烈推荐最新热门的文化、打卡、美食地标。
-3. "label" 字段：大家一起行动填"共同"；特定某人负责或仅某人参与，从成员列表 ["${members.join('", "')}"] 中选一个准确的名字。
+3. "label" 字段：${window.isSoloTrip() ? `本行程只有一位参与人，一律填 "${members[0]}"，不要使用"共同"。` : `大家一起行动填"共同"；特定某人负责或仅某人参与，从成员列表 ["${members.join('", "')}"] 中选一个准确的名字。`}
 4. ${mapRule}
 5. type 必须是: activity, transport, hotel, meal_options, flight 之一。用餐请用 meal_options，并在 options 里给出 1-2 家具体餐厅。
 6. 返回严格的纯JSON（无Markdown标记），只包含上面列出的 Day ID，数据结构如下：
@@ -1842,8 +1846,8 @@ ${tripContext}
       "title": "这一天的主题",
       "hotelName": "推荐住宿名字",
       "events": [
-        {"time": "10:00", "type": "activity", "label": "共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"},
-        {"time": "12:30", "type": "meal_options", "label": "共同", "title": "午餐", "options": [{"title": "店名 (中文 + 当地语言名)", "link": "地图链接", "rating": "4.6", "price": "人均价格", "dishes": "招牌菜"}]}
+        {"time": "10:00", "type": "activity", "label": "${window.getDefaultLabel()}", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"},
+        {"time": "12:30", "type": "meal_options", "label": "${window.getDefaultLabel()}", "title": "午餐", "options": [{"title": "店名 (中文 + 当地语言名)", "link": "地图链接", "rating": "4.6", "price": "人均价格", "dishes": "招牌菜"}]}
       ]
   }]
 }`;
@@ -1868,7 +1872,7 @@ ${tripContext}
                     if (rd.title && (!day.title || /^第\s*\S+\s*天行程$/.test(day.title))) day.title = rd.title;
                     if (rd.hotelName && !day.hotelName) day.hotelName = rd.hotelName;
                     (rd.events || []).forEach(ev => {
-                        day.events.push({ time: String(ev.time || "12:00"), type: validTypes.includes(ev.type) ? ev.type : "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 排程", options: Array.isArray(ev.options) ? ev.options : [] });
+                        day.events.push({ time: String(ev.time || "12:00"), type: validTypes.includes(ev.type) ? ev.type : "activity", label: window.isSoloTrip() ? window.getDefaultLabel() : (ev.label || "共同"), title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 排程", options: Array.isArray(ev.options) ? ev.options : [] });
                         addedCount++; filledDays.add(day.id);
                     });
                     day.events.sort((a, b) => String(a.time).localeCompare(String(b.time)));
@@ -1922,7 +1926,7 @@ ${tripContext}
         提取规则:
         - dayId: 整数，对应可选日期列表中的 Day ID（如 1、2、3）。
         - 时间 (time): 24小时制，格式如 "15:00"，若无明确时间则根据前后活动进行合理估算。
-        - 标签 (label): 若提及人员归属，从成员列表中选一个名字。默认填 "共同"。
+        - 标签 (label): 若提及人员归属，${window.isSoloTrip() ? `本行程只有一位参与人，一律填 "${members[0]}"，不要使用"共同"。` : '从成员列表中选一个名字。默认填 "共同"。'}
         - 类型 (type): 必须是 'activity', 'transport', 'hotel', 'meal_options', 'flight' 之一。
         - 标题 (title): 提取最简明扼要的核心标题。
         - 描述 (desc): 一句说明。
@@ -1933,8 +1937,8 @@ ${tripContext}
 
         请仅返回如下结构的纯 JSON 数组，切勿夹杂 markdown 块标记（如 \`\`\`json）：
         [
-        {"dayId":1,"time":"15:30","type":"activity","label":"共同","title":"景福宫韩服体验","desc":"下午去景福宫穿韩服","link":"https://..."},
-        {"dayId":2,"time":"10:00","type":"activity","label":"共同","title":"北村韩屋村","desc":"上午去北村韩屋村散步","link":"https://..."}
+        {"dayId":1,"time":"15:30","type":"activity","label":"${window.getDefaultLabel()}","title":"景福宫韩服体验","desc":"下午去景福宫穿韩服","link":"https://..."},
+        {"dayId":2,"time":"10:00","type":"activity","label":"${window.getDefaultLabel()}","title":"北村韩屋村","desc":"上午去北村韩屋村散步","link":"https://..."}
         ]`;
 
                     const payload = { contents: [{ parts: [{ text: prompt }] }] };
@@ -1952,7 +1956,7 @@ ${tripContext}
                                 day.events.push({
                                     time: eventData.time || "12:00",
                                     type: eventData.type || "activity",
-                                    label: eventData.label || "共同",
+                                    label: window.isSoloTrip() ? window.getDefaultLabel() : (eventData.label || "共同"),
                                     title: eventData.title || "未命名活动",
                                     desc: eventData.desc || "",
                                     link: eventData.link || "",
@@ -2031,7 +2035,7 @@ ${tripContext}
                         day.events.push({
                             time: v.time || "18:00",
                             type: "meal_options",
-                            label: "共同",
+                            label: window.getDefaultLabel(),
                             title: result.title || "餐饮建议",
                             options: Array.isArray(result.options) ? result.options : [],
                             note: "✨ AI 智能推荐"
@@ -2366,7 +2370,7 @@ ${tripContext}
         window.addGenericEvent = () => { 
             window.openModal("添加行程", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
-                { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
+                { id: 'label', label: '参与人员标签', type: 'select', options: window.getLabelOptions(), value: window.getDefaultLabel() }, 
                 { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
                 { id: 'title', label: '标题' }, { id: 'desc', label: '描述', type: 'textarea', placeholder: '详细描述...' }, { id: 'link', label: '地图链接 (可选)' }
             ], (v) => { 
@@ -2380,7 +2384,7 @@ ${tripContext}
             window.openModal("添加餐饮", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
                 { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
-                { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: '共同' }, 
+                { id: 'label', label: '参与人员', type: 'select', options: window.getLabelOptions(), value: window.getDefaultLabel() }, 
                 { id: 't1', label: '餐厅名称', placeholder: '必填' }, 
                 { id: 'l1', label: '餐厅链接', placeholder: '选填' }, 
                 { id: 'p1', label: '人均参考价', placeholder: '￥' },
@@ -2388,7 +2392,7 @@ ${tripContext}
             ], (v) => { 
                 if(!v.t1) { alert("请填写餐厅名称"); return false; } 
                 const day = tripData.days.find(d => d.id === tripData.currentDay); 
-                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, label: v.label || '共同', options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: v.d1 || '' }] }); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, label: v.label || window.getDefaultLabel(), options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: v.d1 || '' }] }); 
                 day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
             }); 
         };
@@ -2536,7 +2540,7 @@ ${tripContext}
                 const opts = ev.options || []; const sec = (id, text) => ({ id, type: 'html', html: `<div class="text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">${text}</div>` });
                 window.openModal("编辑餐饮", "可修改首选/备选餐厅与参与人员", [
                     { id: 'time', label: '时间', value: ev.time },
-                    { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    { id: 'label', label: '参与人员', type: 'select', options: window.getLabelOptions(), value: window.resolveSoloParty(ev.label) || window.getDefaultLabel() },
                     ...opts.flatMap((o, i) => [
                         sec(`o${i}_head`, i === 0 ? '首选餐厅' : `备选 ${i}`),
                         { id: `o${i}_title`, label: '餐厅名 (清空即删除)', value: o.title || '' },
@@ -2556,7 +2560,7 @@ ${tripContext}
                     const newOpts = opts.map((o, i) => ({ ...o, title: (v[`o${i}_title`] || '').trim(), link: v[`o${i}_link`] || '', price: v[`o${i}_price`] || '', dishes: v[`o${i}_dishes`] || '' })).filter(o => o.title);
                     const newTitle = (v.new_title || '').trim(); if (newTitle) newOpts.push({ title: newTitle, link: v.new_link||'', rating: '4.5', price: v.new_price||'￥', dishes: v.new_dishes||'' });
                     if (newOpts.length === 0) { alert("请至少保留一家餐厅"); return false; }
-                    ev.options = newOpts; ev.time = v.time || ''; ev.label = v.label || '共同';
+                    ev.options = newOpts; ev.time = v.time || ''; ev.label = v.label || window.getDefaultLabel();
                     // The <select>'s value always comes back as a string, while day.id is a number — compare with String() on both sides (and re-find the target with Number()), or days.find(d => d.id === v.moveTo) silently fails to match and the move just does nothing, with no error
                     if (String(v.moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(v.moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
                     day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
@@ -2564,7 +2568,7 @@ ${tripContext}
             } else {
                 window.openModal("编辑", "", [
                     { id: 'time', label: '时间', value: ev.time },
-                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    { id: 'label', label: '标签', type: 'select', options: window.getLabelOptions(), value: window.resolveSoloParty(ev.label) || window.getDefaultLabel() },
                     { id: 'title', label: '标题', value: ev.title },
                     { id: 'desc', label: '描述', type: 'textarea', value: ev.desc },
                     { id: 'link', label: '地图链接 (可选)', value: ev.link || '' },
