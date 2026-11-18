@@ -336,7 +336,7 @@
                             time: ev.time || "00:00",
                             title: ev.title || "未命名",
                             type: ev.type || "activity",
-                            label: ev.label || "共同",
+                            label: ev.label || ((data.settings && Array.isArray(data.settings.members) && data.settings.members.length === 1 && data.settings.members[0]) || "共同"),
                             options: Array.isArray(ev.options) ? ev.options : []
                         })) : []
                     }));
@@ -871,10 +871,10 @@
 
         window.generateAITrip = async (apiKey, modelName, destination, dCount, membersList, sDate, userPrompt, mapProvider) => {
             const mapRule = mapProvider === 'naver' ? "Naver Map 链接格式要求：https://map.naver.com/v5/search/地点英文或当地语言名+城市名 (将空格替换为+)" : "Google Maps 链接格式要求：https://www.google.com/maps/search/?api=1&query=地点英文或当地语言名+城市名 (将空格替换为+)";
-            const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。\n参与人：${membersList.join(', ')}。\n用户的具体要求是：${userPrompt}。\n\n规划规则：\n1. 请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。\n2. 每个 Event 的 "label" 字段，必须根据描述中的人物归属感进行精确分配。如果是大家一起行动必须填"共同"；如果是特定某人负责或仅某人参与，必须从成员列表 ["${membersList.join('", "')}"] 中选一个准确的名字填入。\n3. ${mapRule}\n4. 务必生成恰好 ${dCount} 天的完整数组数据。返回严格的纯JSON（无Markdown标记），数据结构如下：\n{\n  "days": [{\n      "id": 1,\n      "title": "这一天的主题",\n      "hotelName": "推荐住宿名字",\n      "events": [{"time": "10:00", "type": "activity", "label": "成员A 或 共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"}]\n  }]\n}\ntype 必须是: activity, transport, hotel, meal_options, flight`;
+            const systemPrompt = `你是一个顶级旅行规划专家。用户要去：${destination}。总天数：${dCount}天。\n参与人：${membersList.join(', ')}。\n用户的具体要求是：${userPrompt}。\n\n规划规则：\n1. 请结合要求规划完美的旅游线路，强烈推荐最新热门的文化、打卡、美食地标。\n2. 每个 Event 的 "label" 字段，必须根据描述中的人物归属感进行精确分配。${membersList.length === 1 ? `本行程只有一位参与人，所有 Event 的 "label" 一律填 "${membersList[0]}"，不要使用"共同"。` : `如果是大家一起行动必须填"共同"；如果是特定某人负责或仅某人参与，必须从成员列表 ["${membersList.join('", "')}"] 中选一个准确的名字填入。`}\n3. ${mapRule}\n4. 务必生成恰好 ${dCount} 天的完整数组数据。返回严格的纯JSON（无Markdown标记），数据结构如下：\n{\n  "days": [{\n      "id": 1,\n      "title": "这一天的主题",\n      "hotelName": "推荐住宿名字",\n      "events": [{"time": "10:00", "type": "activity", "label": "${membersList.length === 1 ? membersList[0] : '成员A 或 共同'}", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"}]\n  }]\n}\ntype 必须是: activity, transport, hotel, meal_options, flight`;
             const payload = { contents: [{ parts: [{ text: systemPrompt }] }] };
             const rawData = await window.askGemini(payload, apiKey, modelName, true);
-            return (rawData.days || []).map((d, idx) => { return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) }; });
+            return (rawData.days || []).map((d, idx) => { return { id: idx + 1, title: d.title || "行程", hotelName: d.hotelName || "", date: window.formatDateFromStart(sDate, idx), events: (d.events || []).map(ev => ({ time: ev.time || "00:00", type: ev.type || "activity", label: membersList.length === 1 ? membersList[0] : (ev.label || "共同"), title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 生成", options: Array.isArray(ev.options) ? ev.options : [] })) }; });
         };
 
         const loadLocalFallback = () => {
@@ -1001,15 +1001,18 @@
                 if (!tripData || !tripData.expenses || tripData.expenses.length === 0) {
                     alert("暂无账单数据可导出，请先记一笔账！"); return;
                 }
-                let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),支付人,使用人,小票关联,备注说明\n";
+                let csvContent = "\uFEFF日期,消费项目,分类,原币金额,币种,汇率,实付人民币(CNY),退税金额,退税币种,退税折合(RMB),净支出(RMB),支付人,使用人,小票关联,备注说明\n";
                 tripData.expenses.forEach(e => {
-                    let rate = parseFloat(e.exchangeRate) || 0.048;
-                    let cnyVal = e.currency === 'CNY' ? e.amount : (e.actualCnyAmount || (e.amount * rate).toFixed(2));
+                    const cny = window.getExpenseCny(e);
+                    // 实付人民币 = charge before refund (actual if filled, else estimate); 净支出 = charge minus refund
+                    let rate = cny.rate;
+                    let cnyVal = cny.baseCny.toFixed(2);
+                    let refundCols = cny.refund > 0 ? `"${+cny.refund.toFixed(2)}","${cny.refundCurrency}","${cny.refundCny.toFixed(2)}"` : `"","",""`;
                     let cat = (e.category || '其他').replace(/"/g, '""');
                     let item = (e.item || '').replace(/"/g, '""');
                     let note = (e.note || '').replace(/"/g, '""');
                     let label = (e.receiptLabel || '').replace(/"/g, '""');
-                    csvContent += `"${e.date}","${item}","${cat}","${e.amount}","${e.currency}","${rate}","${cnyVal}","${e.payer}","${e.consumers}","${label}","${note}"\n`;
+                    csvContent += `"${e.date}","${item}","${cat}","${e.amount}","${e.currency}","${rate}","${cnyVal}",${refundCols},"${cny.netCny.toFixed(2)}","${e.payer}","${e.consumers}","${label}","${note}"\n`;
                 });
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -1105,7 +1108,8 @@
                     // The image field's value is one of three shapes: '' / 'imgref:<id>' (original image in the subcollection, filled in async) / 'data:...' (freshly compressed new image)
                     else if (f.type === 'image') inputHtml = `<div class="flex items-center gap-3"><div id="preview-${f.id}" class="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">${String(f.value || '').indexOf('imgref:') === 0 ? `<img src="${window.IMG_PLACEHOLDER}" data-img-ref="${String(f.value).slice(7)}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : (f.value ? `<img src="${f.value}" onerror="this.src=window.IMG_PLACEHOLDER" class="w-full h-full object-cover">` : `<i class="fas fa-image text-slate-300 text-xl"></i>`)}</div><div class="flex-1 min-w-0"><label class="block w-full text-center px-4 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-2xl cursor-pointer transition-colors shadow-sm"><i class="fas fa-camera mr-1 text-blue-500"></i> 上传图片<input type="file" accept="image/*" class="hidden" onchange="window.handleImageUpload(event, '${f.id}')"></label><input type="hidden" id="f-${f.id}" value="${f.value || ''}"></div></div>`;
                     else inputHtml = `<input id="f-${f.id}" type="${f.inputType || 'text'}" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all text-slate-800" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`;
-                    wrap.innerHTML = `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>${inputHtml}`;
+                    // Fields without a label (e.g. info boxes, prompt textareas) render no label element
+                    wrap.innerHTML = `${f.label ? `<label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider pl-1">${f.label}</label>` : ''}${inputHtml}`;
                 }
                 content.appendChild(wrap);
             });
@@ -1215,7 +1219,47 @@
         window.getMembers = () => { if (tripData && tripData.settings && tripData.settings.members && tripData.settings.members.length > 0) return tripData.settings.members; return ['成员 A', '成员 B']; };
         window.SHARED_PARTY = '共同';
         window.isSharedParty = (val) => ['共同', 'both', 'together'].includes(String(val || '').trim().toLowerCase());
+        // Solo trip: no '共同' option for expense payer/consumer; legacy shared values map to the sole member (mathematically equivalent).
+        window.isSoloTrip = () => window.getMembers().length === 1;
+        window.getPayerOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [...window.getMembers(), window.SHARED_PARTY];
+        window.getConsumerOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [window.SHARED_PARTY, ...window.getMembers()];
+        window.resolveSoloParty = (val) => (window.isSoloTrip() && window.isSharedParty(val)) ? window.getMembers()[0] : val;
+        // Split `total` across items in proportion to weightFn(item). Parts are rounded to cents and the rounding remainder
+        // goes to the largest-weight item, so they always sum exactly to the (cent-rounded) total. Zero total weight puts it all on the first item.
+        window.prorate = (items, total, weightFn) => {
+            if (!items.length) return [];
+            const weights = items.map(it => Math.max(0, Number(weightFn(it)) || 0));
+            const sumW = weights.reduce((a, b) => a + b, 0);
+            let big = 0; weights.forEach((w, i) => { if (w > weights[big]) big = i; });
+            const totalCents = Math.round((Number(total) || 0) * 100);
+            const cents = weights.map((w, i) => (i === big || sumW <= 0) ? 0 : Math.round(w / sumW * totalCents));
+            cents[big] = totalCents - cents.reduce((a, b) => a + b, 0);
+            return cents.map(c => c / 100);
+        };
+        // Effective RMB of one expense. taxRefund is the amount actually received, in taxRefundCurrency (missing = the
+        // expense's own currency, i.e. legacy data). Conversion: CNY as is; same currency as the expense at the
+        // actually-charged rate when known (actualCnyAmount / amount), else the estimate rate; any other currency at its
+        // estimate rate. `refund` stays in the refund currency. netCny = base - refund.
+        window.getExpenseCny = (e) => {
+            const amount = parseFloat(e.amount) || 0;
+            const rate = parseFloat(e.exchangeRate) || parseFloat(window.getEstExchangeRate(e.currency)) || 0;
+            const refund = Math.max(0, parseFloat(e.taxRefund) || 0);
+            const refundCurrency = e.taxRefundCurrency || e.currency;
+            const isCny = e.currency === 'CNY';
+            const actual = parseFloat(e.actualCnyAmount) || 0;
+            const settled = isCny || !(e.actualCnyAmount == null || e.actualCnyAmount === '');
+            const baseCny = isCny ? amount : (actual || amount * rate);
+            const effRate = (actual > 0 && amount > 0) ? actual / amount : rate;
+            const refundCny = refundCurrency === 'CNY' ? refund
+                : refundCurrency === e.currency ? refund * effRate
+                : refund * (parseFloat(window.getEstExchangeRate(refundCurrency)) || 0);
+            return { baseCny, refundCny, netCny: baseCny - refundCny, settled, refund, refundCurrency, rate };
+        };
         window.getLabelHtml = (label) => { if (!label) return ''; if (label === '共同' || label.toLowerCase() === 'together') return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">共同</span>`; const members = window.getMembers(); const idx = members.findIndex(m => m.toLowerCase() === label.toLowerCase()); const displayLabel = idx !== -1 ? members[idx] : label; if (idx === -1) return `<span class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; const styles = ["bg-blue-50 text-blue-600 border-blue-100", "bg-pink-50 text-pink-600 border-pink-100", "bg-emerald-50 text-emerald-600 border-emerald-100", "bg-amber-50 text-amber-600 border-amber-100", "bg-purple-50 text-purple-600 border-purple-100", "bg-rose-50 text-rose-600 border-rose-100"]; return `<span class="text-[10px] ${styles[idx % styles.length]} border px-1.5 py-0.5 rounded font-bold mr-2">${displayLabel}</span>`; };
+        // Itinerary label helpers: a solo trip has no "共同" (shared) label; legacy "共同" values map to the sole member
+        window.getLabelOptions = () => window.isSoloTrip() ? [...window.getMembers()] : [window.SHARED_PARTY, ...window.getMembers()];
+        window.getDefaultLabel = () => window.isSoloTrip() ? window.getMembers()[0] : window.SHARED_PARTY;
+        { const _baseLabelHtml = window.getLabelHtml; window.getLabelHtml = (label) => window.isSoloTrip() ? '' : _baseLabelHtml(label); }
         window.getCatIcon = (cat) => { if(cat.includes('餐饮')) return 'fa-utensils'; if(cat.includes('交通')) return 'fa-train'; if(cat.includes('购物')) return 'fa-shopping-bag'; if(cat.includes('住宿')) return 'fa-bed'; if(cat.includes('娱乐')) return 'fa-ticket-alt'; return 'fa-receipt'; };
 
         window.render = () => {
@@ -1441,12 +1485,14 @@
             const members = window.getMembers();
             
             let stats = {}; members.forEach(m => stats[m] = { paid: 0, used: 0 });
-            
+            let totalRefundCny = 0;
+
             tripData.expenses.forEach(e => {
-                let rate = parseFloat(e.exchangeRate) || 0.048;
-                let amt = e.currency === 'CNY' ? e.amount : (e.actualCnyAmount || (e.amount * rate));
-                amt = parseFloat(amt);
-                
+                // Net of tax refund: the refund goes back to the payer and lowers the consumer's spend.
+                const cny = window.getExpenseCny(e);
+                let amt = cny.netCny;
+                totalRefundCny += cny.refundCny;
+
                 let payer = members.find(m => m.toLowerCase() === (e.payer||'').toLowerCase()) || e.payer;
                 let consumer = members.find(m => m.toLowerCase() === (e.consumers||'').toLowerCase()) || e.consumers;
 
@@ -1472,6 +1518,7 @@
                 else settlementHtml += `<p class="text-xs text-slate-300 mb-1">${m}: <span class="text-emerald-300 font-bold ml-1">结清</span></p>`;
             });
             if (!settlementHtml) settlementHtml = '<span class="text-emerald-300 font-black">暂无记账</span>';
+            if (totalRefundCny > 0) settlementHtml += `<p class="text-[10px] text-emerald-300 font-bold mt-1">累计退税 ≈ ¥${totalRefundCny.toFixed(1)}</p>`;
 
             let memberBoxesHtml = members.map(m => `<div class="bg-white border border-slate-200 p-4 md:p-5 rounded-3xl shadow-sm flex flex-col col-span-1 justify-center"><p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1.5 truncate">${m}</p><p class="text-[11px] md:text-xs text-slate-500 mb-0.5">已付: ¥${stats[m].paid.toFixed(1)}</p><p class="text-[11px] md:text-xs text-slate-500 mb-2">消费: ¥${stats[m].used.toFixed(1)}</p><p class="font-black text-xs md:text-sm ${stats[m].paid - stats[m].used >= 0 ? 'text-emerald-600' : 'text-rose-600'} border-t border-slate-100 pt-2 truncate">净额: ${stats[m].paid - stats[m].used > 0 ? '+' : ''}${(stats[m].paid - stats[m].used).toFixed(1)}</p></div>`).join('');
 
@@ -1525,17 +1572,23 @@
                     
                     div.onclick = () => window.editExpense(idx);
 
-                    const cnyVal = (e.amount * parseFloat(e.exchangeRate || window.getEstExchangeRate(e.currency))).toFixed(2);
+                    const cny = window.getExpenseCny(e);
+                    const hasRefund = cny.refund > 0;
+                    const netVal = cny.netCny.toFixed(2);
                     const iconCls = window.getCatIcon(e.category || '其他/Other');
+                    const solo = window.isSoloTrip();
 
+                    // With a tax refund the RMB figure is net of it ("净" labels keep it compact on mobile).
                     let cnyDisplayHtml = '';
                     if (e.currency === 'CNY') {
-                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">人民币支付</p>`;
+                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">${hasRefund ? `人民币支付 · 净 ¥${netVal}` : '人民币支付'}</p>`;
                     } else if (!isUnsettledForeign) {
-                        cnyDisplayHtml = `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>实付 ¥${parseFloat(e.actualCnyAmount).toFixed(2)}</p>`;
+                        cnyDisplayHtml = `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5"><i class="fas fa-check-circle mr-0.5"></i>${hasRefund ? '实付净额' : '实付'} ¥${netVal}</p>`;
                     } else {
-                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">预估 ≈ ¥${cnyVal}</p>`;
+                        cnyDisplayHtml = `<p class="text-[9px] text-slate-400 font-medium whitespace-nowrap mt-0.5">${hasRefund ? '预估净额' : '预估'} ≈ ¥${netVal}</p>`;
                     }
+                    // Refund in another currency than the expense gets its code appended (¥ is both JPY and CNY)
+                    const refundHtml = hasRefund ? `<p class="text-[9px] text-emerald-500 font-bold whitespace-nowrap mt-0.5">退税 −${window.getCurrencySymbol(cny.refundCurrency)}${+cny.refund.toFixed(2)}${cny.refundCurrency !== e.currency ? ` ${cny.refundCurrency}` : ''}</p>` : '';
 
                     let groupBadgeHtml = '';
                     if (isGrouped) {
@@ -1555,13 +1608,14 @@
                                     <p class="text-sm font-bold text-slate-800 truncate">${e.item}</p>
                                     ${isUnsettledForeign ? '<i class="fas fa-circle text-[6px] text-amber-400 flex-shrink-0" title="待核对实付金额"></i>' : ''}
                                 </div>
-                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${window.isSharedParty(e.payer) ? '共同支付' : `${e.payer} 付`}</p>
-                                ${!window.isSharedParty(e.consumers) ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
+                                <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">${e.date} • ${e.category ? e.category.split('/')[0] : '其他'} • ${window.isSharedParty(e.payer) && !solo ? '共同支付' : `${window.resolveSoloParty(e.payer)} 付`}</p>
+                                ${!solo && !window.isSharedParty(e.consumers) ? `<p class="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded inline-block mt-1.5 font-bold">由 ${e.consumers} 独享</p>` : ''}
                                 ${itemNote}
                             </div>
                         </div>
                         <div class="text-right flex-shrink-0 flex flex-col justify-center items-end relative z-10 pl-2 border-l border-slate-100/50">
                             <p class="${e.currency !== 'CNY' ? 'text-slate-600' : 'text-slate-800'} font-black text-sm whitespace-nowrap">${window.getCurrencySymbol(e.currency)}${e.amount}</p>
+                            ${refundHtml}
                             ${cnyDisplayHtml}
                         </div>
                         <i class="fas fa-chevron-right absolute right-3 top-1/2 -translate-y-1/2 text-slate-200 text-xs opacity-50"></i>
@@ -1801,7 +1855,7 @@ ${tripContext}
 规划规则：
 1. 每天安排 4-6 项，覆盖上午、午餐、下午、晚餐和晚上，同一天的地点尽量顺路。如果某天已有安排，只在空档补充，时间不要与已有安排冲突。
 2. 强烈推荐最新热门的文化、打卡、美食地标。
-3. "label" 字段：大家一起行动填"共同"；特定某人负责或仅某人参与，从成员列表 ["${members.join('", "')}"] 中选一个准确的名字。
+3. "label" 字段：${window.isSoloTrip() ? `本行程只有一位参与人，一律填 "${members[0]}"，不要使用"共同"。` : `大家一起行动填"共同"；特定某人负责或仅某人参与，从成员列表 ["${members.join('", "')}"] 中选一个准确的名字。`}
 4. ${mapRule}
 5. type 必须是: activity, transport, hotel, meal_options, flight 之一。用餐请用 meal_options，并在 options 里给出 1-2 家具体餐厅。
 6. 返回严格的纯JSON（无Markdown标记），只包含上面列出的 Day ID，数据结构如下：
@@ -1811,8 +1865,8 @@ ${tripContext}
       "title": "这一天的主题",
       "hotelName": "推荐住宿名字",
       "events": [
-        {"time": "10:00", "type": "activity", "label": "共同", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"},
-        {"time": "12:30", "type": "meal_options", "label": "共同", "title": "午餐", "options": [{"title": "店名 (中文 + 当地语言名)", "link": "地图链接", "rating": "4.6", "price": "人均价格", "dishes": "招牌菜"}]}
+        {"time": "10:00", "type": "activity", "label": "${window.getDefaultLabel()}", "title": "活动标题", "desc": "简介", "link": "对应的地图链接"},
+        {"time": "12:30", "type": "meal_options", "label": "${window.getDefaultLabel()}", "title": "午餐", "options": [{"title": "店名 (中文 + 当地语言名)", "link": "地图链接", "rating": "4.6", "price": "人均价格", "dishes": "招牌菜"}]}
       ]
   }]
 }`;
@@ -1837,7 +1891,7 @@ ${tripContext}
                     if (rd.title && (!day.title || /^第\s*\S+\s*天行程$/.test(day.title))) day.title = rd.title;
                     if (rd.hotelName && !day.hotelName) day.hotelName = rd.hotelName;
                     (rd.events || []).forEach(ev => {
-                        day.events.push({ time: String(ev.time || "12:00"), type: validTypes.includes(ev.type) ? ev.type : "activity", label: ev.label || "共同", title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 排程", options: Array.isArray(ev.options) ? ev.options : [] });
+                        day.events.push({ time: String(ev.time || "12:00"), type: validTypes.includes(ev.type) ? ev.type : "activity", label: window.isSoloTrip() ? window.getDefaultLabel() : (ev.label || "共同"), title: ev.title || "未命名活动", desc: ev.desc || "", link: ev.link || "", note: "✨ AI 排程", options: Array.isArray(ev.options) ? ev.options : [] });
                         addedCount++; filledDays.add(day.id);
                     });
                     day.events.sort((a, b) => String(a.time).localeCompare(String(b.time)));
@@ -1891,7 +1945,7 @@ ${tripContext}
         提取规则:
         - dayId: 整数，对应可选日期列表中的 Day ID（如 1、2、3）。
         - 时间 (time): 24小时制，格式如 "15:00"，若无明确时间则根据前后活动进行合理估算。
-        - 标签 (label): 若提及人员归属，从成员列表中选一个名字。默认填 "共同"。
+        - 标签 (label): 若提及人员归属，${window.isSoloTrip() ? `本行程只有一位参与人，一律填 "${members[0]}"，不要使用"共同"。` : '从成员列表中选一个名字。默认填 "共同"。'}
         - 类型 (type): 必须是 'activity', 'transport', 'hotel', 'meal_options', 'flight' 之一。
         - 标题 (title): 提取最简明扼要的核心标题。
         - 描述 (desc): 一句说明。
@@ -1902,8 +1956,8 @@ ${tripContext}
 
         请仅返回如下结构的纯 JSON 数组，切勿夹杂 markdown 块标记（如 \`\`\`json）：
         [
-        {"dayId":1,"time":"15:30","type":"activity","label":"共同","title":"景福宫韩服体验","desc":"下午去景福宫穿韩服","link":"https://..."},
-        {"dayId":2,"time":"10:00","type":"activity","label":"共同","title":"北村韩屋村","desc":"上午去北村韩屋村散步","link":"https://..."}
+        {"dayId":1,"time":"15:30","type":"activity","label":"${window.getDefaultLabel()}","title":"景福宫韩服体验","desc":"下午去景福宫穿韩服","link":"https://..."},
+        {"dayId":2,"time":"10:00","type":"activity","label":"${window.getDefaultLabel()}","title":"北村韩屋村","desc":"上午去北村韩屋村散步","link":"https://..."}
         ]`;
 
                     const payload = { contents: [{ parts: [{ text: prompt }] }] };
@@ -1921,7 +1975,7 @@ ${tripContext}
                                 day.events.push({
                                     time: eventData.time || "12:00",
                                     type: eventData.type || "activity",
-                                    label: eventData.label || "共同",
+                                    label: window.isSoloTrip() ? window.getDefaultLabel() : (eventData.label || "共同"),
                                     title: eventData.title || "未命名活动",
                                     desc: eventData.desc || "",
                                     link: eventData.link || "",
@@ -2000,7 +2054,7 @@ ${tripContext}
                         day.events.push({
                             time: v.time || "18:00",
                             type: "meal_options",
-                            label: "共同",
+                            label: window.getDefaultLabel(),
                             title: result.title || "餐饮建议",
                             options: Array.isArray(result.options) ? result.options : [],
                             note: "✨ AI 智能推荐"
@@ -2132,7 +2186,7 @@ ${tripContext}
                 const result = JSON.parse(text);
                 
                 tempReceiptData.items = result.items || [];
-                tempReceiptData.items.forEach(i => { i.consumer = '共同'; i.note = ''; });
+                tempReceiptData.items.forEach(i => { i.consumer = window.isSoloTrip() ? window.getMembers()[0] : window.SHARED_PARTY; i.note = ''; });
                 tempReceiptData.payer = window.getMembers()[0];
                 tempReceiptData.date = result.date || window.getTodayString();
                 tempReceiptData.receiptLabel = result.receiptLabel || "";
@@ -2155,7 +2209,7 @@ ${tripContext}
             document.getElementById('receipt-modal-footer').classList.remove('hidden');
 
             const members = window.getMembers();
-            const payerOptions = [...members, '共同'].map(m => `<option value="${m}" ${tempReceiptData.payer === m ? 'selected' : ''}>${m}</option>`).join('');
+            const payerOptions = window.getPayerOptions().map(m => `<option value="${m}" ${window.resolveSoloParty(tempReceiptData.payer) === m ? 'selected' : ''}>${m}</option>`).join('');
             const locCur = tripData.settings?.currency || 'KRW';
             const selCur = tempReceiptData.currency || locCur; // keep chosen currency across re-renders
 
@@ -2196,7 +2250,7 @@ ${tripContext}
                 html += `<p class="text-xs text-slate-400 text-center py-4">未识别到商品项目</p>`;
             } else {
                 tempReceiptData.items.forEach((item, idx) => {
-                    const consumerOptions = ['共同', ...members].map(m => `<option value="${m}" ${item.consumer === m ? 'selected' : ''}>${m}</option>`).join('');
+                    const consumerOptions = window.getConsumerOptions().map(m => `<option value="${m}" ${window.resolveSoloParty(item.consumer) === m ? 'selected' : ''}>${m}</option>`).join('');
                     html += `
                         <div class="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm relative group transition-all hover:border-blue-300">
                             <button onclick="window.removeReceiptItem(${idx})" class="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-lg text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:text-red-500 shadow-sm flex items-center justify-center z-10"><i class="fas fa-times"></i></button>
@@ -2273,7 +2327,7 @@ ${tripContext}
                         actualCnyAmount: null,
                         exchangeRate: window.getEstExchangeRate(currency),
                         payer: payer,
-                        consumers: item.consumer || '共同',
+                        consumers: item.consumer || (window.isSoloTrip() ? members[0] : window.SHARED_PARTY),
                         note: item.note || ''
                     });
                     addedCount++;
@@ -2302,10 +2356,16 @@ ${tripContext}
                 window.showAILoading("✨ AI 正在拆解账单金额...");
                 try {
                     const membersStr = window.getMembers().join(', ');
-                    const prompt = `你是专业的账单解析器。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 当前成员: [${membersStr}]。请解析用户描述并提取: item(项目), amount(数值), currency(货币代码), payer(支付人，从成员列表选 或 '共同'，若描述中提到大家一起付/AA/公费/共同支付则填 '共同'), consumers(使用人，从成员列表选 或 '共同'), category(类别)。如果未指明支付人，默认填${window.getMembers()[0]}。用户描述：${v.text} 返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码","payer":"付款人名字","consumers":"使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
+                    const solo = window.isSoloTrip();
+                    // Solo trip: no '共同' — payer and consumers are always the sole member
+                    const partyRule = solo
+                        ? `payer(支付人，只有一位成员，固定填 ${window.getMembers()[0]}), consumers(使用人，固定填 ${window.getMembers()[0]})`
+                        : `payer(支付人，从成员列表选 或 '共同'，若描述中提到大家一起付/AA/公费/共同支付则填 '共同'), consumers(使用人，从成员列表选 或 '共同')`;
+                    const prompt = `你是专业的账单解析器。当前目的地: ${tripData.settings.destination}, 主货币: ${tripData.settings.currency}, 当前成员: [${membersStr}]。请解析用户描述并提取: item(项目), amount(数值), currency(货币代码), ${partyRule}, category(类别)。如果未指明支付人，默认填${window.getMembers()[0]}。用户描述：${v.text} 返回严格的纯JSON：{"item":"消费名称","amount":数值类型,"currency":"货币代码","payer":"付款人名字","consumers":"使用人名字","category":"必须是 '餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other' 之一"}`;
                     const payload = { contents: [{ parts: [{ text: `用户输入：${v.text}\n${prompt}` }] }] };
                     const model = tripData?.settings?.geminiModel || 'gemini-3.5-flash';
                     const result = await window.askGemini(payload, apiKey, model, true);
+                    if (solo) { result.payer = window.getMembers()[0]; result.consumers = window.getMembers()[0]; }
                     tripData.expenses.push({ id: Date.now(), date: new Date().toLocaleDateString('zh-CN', {month:'2-digit', day:'2-digit'}), item: result.item, category: result.category || '其他/Other', amount: parseFloat(result.amount) || 0, currency: result.currency || tripData.settings.currency, actualCnyAmount: null, exchangeRate: window.getEstExchangeRate(result.currency || tripData.settings.currency), payer: result.payer, consumers: result.consumers, note: '✨ AI 提取' });
                     window.saveToCloud(); window.render();
                 } catch(e) { alert("AI 解析失败：" + e.message); } finally { window.hideAILoading(); }
@@ -2329,7 +2389,7 @@ ${tripContext}
         window.addGenericEvent = () => { 
             window.openModal("添加行程", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
-                { id: 'label', label: '参与人员标签', type: 'select', options: ['共同', ...window.getMembers()] }, 
+                { id: 'label', label: '参与人员标签', type: 'select', options: window.getLabelOptions(), value: window.getDefaultLabel() }, 
                 { id: 'type', label: '类型', type: 'select', options: ['activity', 'transport', 'hotel', 'flight'] }, 
                 { id: 'title', label: '标题' }, { id: 'desc', label: '描述', type: 'textarea', placeholder: '详细描述...' }, { id: 'link', label: '地图链接 (可选)' }
             ], (v) => { 
@@ -2343,7 +2403,7 @@ ${tripContext}
             window.openModal("添加餐饮", "", [
                 { id: 'time', label: '时间', value: '12:00' }, 
                 { id: 'mTitle', label: '板块标题', value: '餐饮建议' }, 
-                { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: '共同' }, 
+                { id: 'label', label: '参与人员', type: 'select', options: window.getLabelOptions(), value: window.getDefaultLabel() }, 
                 { id: 't1', label: '餐厅名称', placeholder: '必填' }, 
                 { id: 'l1', label: '餐厅链接', placeholder: '选填' }, 
                 { id: 'p1', label: '人均参考价', placeholder: '￥' },
@@ -2351,7 +2411,7 @@ ${tripContext}
             ], (v) => { 
                 if(!v.t1) { alert("请填写餐厅名称"); return false; } 
                 const day = tripData.days.find(d => d.id === tripData.currentDay); 
-                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, label: v.label || '共同', options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: v.d1 || '' }] }); 
+                day.events.push({ time: v.time, type: 'meal_options', title: v.mTitle, label: v.label || window.getDefaultLabel(), options: [{ title: v.t1, link: v.l1||'', rating: '4.5', price: v.p1||'￥', dishes: v.d1 || '' }] }); 
                 day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render(); 
             }); 
         };
@@ -2364,8 +2424,8 @@ ${tripContext}
                 { id: 'amount', label: '原币金额', inputType: 'number' }, 
                 { id: 'currency', label: '币种', type: 'select', options: window.getExpenseCurrencies().map(c => ({value: c, text: c})), onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" }, 
                 { id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', style: 'display:block' },
-                { id: 'payer', label: '支付人', type: 'select', options: [...window.getMembers(), '共同'] },
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()] },
+                { id: 'payer', label: '支付人', type: 'select', options: window.getPayerOptions() },
+                { id: 'consumers', label: '使用人', type: 'select', options: window.getConsumerOptions() },
                 { id: 'note', label: '单项备注说明 (可选)', placeholder: '例如：帮朋友代购、很划算...' }
             ], (v) => { 
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; } 
@@ -2394,25 +2454,35 @@ ${tripContext}
             let groupTotalOrig = isGroup ? groupItems.reduce((sum, e) => sum + e.amount, 0) : ev.amount;
             let groupTotalCny = isGroup ? groupItems.reduce((sum, e) => sum + (e.actualCnyAmount || 0), 0) : (ev.actualCnyAmount || '');
             if (groupTotalCny === 0) groupTotalCny = '';
+            const round2 = (x) => Math.round(x * 100) / 100;
+            // taxRefund = amount actually received, in taxRefundCurrency (missing = expense currency); a receipt group is edited as one whole-receipt total
+            let curRefund = isGroup ? round2(groupItems.reduce((sum, e) => sum + (parseFloat(e.taxRefund) || 0), 0)) : (parseFloat(ev.taxRefund) || 0);
+            const refundedItem = (isGroup ? groupItems : [ev]).find(e => (parseFloat(e.taxRefund) || 0) > 0);
+            const curRefundCur = refundedItem ? (refundedItem.taxRefundCurrency || refundedItem.currency) : ev.currency;
 
             let fields = [
                 { id: 'date', label: '消费日期 (MM/DD)', value: ev.date || window.getTodayString(), placeholder: '例如：06/28' },
                 { id: 'item', label: '消费项目', value: ev.item },
                 { id: 'category', label: '消费分类', type: 'select', options: ['餐饮/Food', '交通/Transport', '购物/Shopping', '住宿/Hotel', '娱乐/Entertainment', '其他/Other'], value: ev.category },
                 { id: 'amount', label: isGroup ? '本项单价 (原币)' : '原币金额', inputType: 'number', value: ev.amount },
-                { id: 'currency', label: '币种', type: 'select', options: window.getExpenseCurrencies(ev.currency).map(c => ({value: c, text: c})), value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none')" },
+                { id: 'currency', label: '币种', type: 'select', options: window.getExpenseCurrencies(ev.currency).map(c => ({value: c, text: c})), value: ev.currency, onchange: "document.getElementById('wrap-actualCny').style.display = (this.value !== 'CNY' ? 'block' : 'none'); if (!document.getElementById('f-taxRefund').value) document.getElementById('f-taxRefundCurrency').value = this.value;" },
             ];
 
             if (isGroup && ev.currency !== 'CNY') {
-                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${groupTotalOrig.toFixed(2)} ${ev.currency})。请在下方填写【整单实付RMB】，系统将自动按比例拆分至各商品。` });
+                fields.push({ id: 'info_grp', type: 'info', value: `🧾 此项属于小票合单 (共 ${groupItems.length} 件商品，总计 ${groupTotalOrig.toFixed(2)} ${ev.currency})。请在下方填写【整单实付RMB】，系统将自动按比例拆分至各商品。${curRefund > 0 ? `\n已登记整单实际到手退税 ${curRefund} ${curRefundCur}，同样按比例分摊。` : '\n机场退税后可补填【整单实际到手退税金额】及其币种，同样按比例分摊。'}` });
                 fields.push({ id: 'actualCny', label: '整单实付扣款 (RMB)', inputType: 'number', value: groupTotalCny, style: 'display:block' });
             } else {
                 fields.push({ id: 'actualCny', label: '实际扣款 (RMB) - 账单出后可补填', inputType: 'number', value: ev.actualCnyAmount || '', style: ev.currency !== 'CNY' ? 'display:block' : 'display:none' });
             }
+            // Refund currency: cash at the airport (local currency) or a card refund on the bill (CNY / USD)
+            const refundCurOptions = [...new Set([...window.getExpenseCurrencies(ev.currency), curRefundCur])];
+            fields.push({ id: 'taxRefundCurrency', label: '退税到手币种', type: 'select', options: refundCurOptions.map(c => ({value: c, text: c})), value: curRefundCur });
+            fields.push({ id: 'taxRefund', label: isGroup ? '整单实际到手退税金额 - 机场退税后可补填' : '实际到手退税金额 - 机场退税后可补填', inputType: 'number', value: curRefund || '' });
 
             fields.push(
-                { id: 'payer', label: '支付人', type: 'select', options: [...window.getMembers(), '共同'], value: ev.payer },
-                { id: 'consumers', label: '使用人', type: 'select', options: ['共同', ...window.getMembers()], value: ev.consumers }
+                // solo trip: legacy '共同' preselects the sole member
+                { id: 'payer', label: '支付人', type: 'select', options: window.getPayerOptions(), value: window.resolveSoloParty(ev.payer) },
+                { id: 'consumers', label: '使用人', type: 'select', options: window.getConsumerOptions(), value: window.resolveSoloParty(ev.consumers) }
             );
 
             if (isGroup) {
@@ -2422,6 +2492,38 @@ ${tripContext}
 
             window.openModal("编辑账目", "", fields, (v) => {
                 if (!v.item || !v.amount) { alert("消费项目和金额为必填项"); return false; }
+                const newAmount = parseFloat(v.amount) || 0;
+                const targets = isGroup ? groupItems : [ev];
+                // Post-edit view of every target (nothing is mutated until validation passes; return false keeps the modal open)
+                const post = targets.map(item => item === ev ? { ...item, amount: newAmount, currency: v.currency, exchangeRate: v.currency !== ev.currency ? window.getEstExchangeRate(v.currency) : ev.exchangeRate } : { ...item });
+                // Actual RMB charge: a group total is prorated by the post-edit amounts; empty clears it, CNY -> null
+                let actualParts = null; // null = clear
+                if (v.currency !== 'CNY' && v.actualCny) {
+                    const totalActualCny = parseFloat(v.actualCny);
+                    actualParts = isGroup ? window.prorate(post, totalActualCny, p => parseFloat(p.amount) || 0) : [totalActualCny];
+                }
+                post.forEach((p, i) => {
+                    if (actualParts) p.actualCnyAmount = actualParts[i];
+                    else if (targets[i] === ev || v.currency !== 'CNY') p.actualCnyAmount = null;
+                });
+
+                // Tax refund: must not exceed what was spent. Same currency -> exact original-currency cap; otherwise compare in RMB.
+                const refundCur = v.taxRefundCurrency || v.currency;
+                const refundTotal = String(v.taxRefund || '').trim() === '' ? 0 : Number(v.taxRefund);
+                const scope = isGroup ? '整单' : '本项';
+                if (!isFinite(refundTotal) || refundTotal < 0) { alert('退税金额需为不小于 0 的数字'); return false; }
+                if (refundCur === v.currency) {
+                    const refundCap = post.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                    if (refundTotal > refundCap + 1e-9) { alert(`退税金额不能超过${scope}消费金额 ${round2(refundCap)} ${v.currency}`); return false; }
+                } else if (refundTotal > 0) {
+                    const refundRate = refundCur === 'CNY' ? 1 : (parseFloat(window.getEstExchangeRate(refundCur)) || 0);
+                    const capCny = post.reduce((sum, p) => sum + window.getExpenseCny(p).baseCny, 0);
+                    if (refundTotal * refundRate > capCny + Math.max(0.01, capCny * 0.01)) {
+                        const capText = refundCur === 'CNY' ? `¥${round2(capCny)}` : `约 ${round2(capCny / refundRate)} ${refundCur}（≈ ¥${round2(capCny)}）`;
+                        alert(`退税金额不能超过${scope}消费折合的 ${capText}，请检查金额或币种`); return false;
+                    }
+                }
+
                 ev.date = v.date;
                 ev.item = v.item;
                 ev.category = v.category;
@@ -2439,21 +2541,15 @@ ${tripContext}
                     });
                 }
 
-                if (v.currency !== 'CNY' && v.actualCny) {
-                    let totalActualCny = parseFloat(v.actualCny);
-                    if (isGroup) {
-                        groupItems.forEach(item => {
-                            item.actualCnyAmount = (item.amount / groupTotalOrig) * totalActualCny;
-                        });
-                    } else {
-                        ev.actualCnyAmount = totalActualCny;
-                    }
-                } else {
-                    ev.actualCnyAmount = null;
-                    if (isGroup && v.currency !== 'CNY') {
-                        groupItems.forEach(item => item.actualCnyAmount = null);
-                    }
-                }
+                targets.forEach((item, i) => { if (post[i].actualCnyAmount !== undefined) item.actualCnyAmount = post[i].actualCnyAmount; }); // never write undefined
+
+                // Tax refund: 0/empty clears amount and currency; otherwise every item stores the refund currency and a
+                // share prorated by post-edit amount (parts sum exactly). Items whose share rounds to 0 carry no refund.
+                const refundParts = refundTotal > 0 ? window.prorate(post, refundTotal, p => parseFloat(p.amount) || 0) : targets.map(() => 0);
+                targets.forEach((item, i) => {
+                    if (refundParts[i] > 0) { item.taxRefund = refundParts[i]; item.taxRefundCurrency = refundCur; }
+                    else { delete item.taxRefund; delete item.taxRefundCurrency; }
+                });
                 window.saveToCloud(); window.render();
             }, () => {
                 tripData.expenses.splice(idx, 1);
@@ -2469,7 +2565,7 @@ ${tripContext}
                 const opts = ev.options || []; const sec = (id, text) => ({ id, type: 'html', html: `<div class="text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">${text}</div>` });
                 window.openModal("编辑餐饮", "可修改首选/备选餐厅与参与人员", [
                     { id: 'time', label: '时间', value: ev.time },
-                    { id: 'label', label: '参与人员', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    { id: 'label', label: '参与人员', type: 'select', options: window.getLabelOptions(), value: window.resolveSoloParty(ev.label) || window.getDefaultLabel() },
                     ...opts.flatMap((o, i) => [
                         sec(`o${i}_head`, i === 0 ? '首选餐厅' : `备选 ${i}`),
                         { id: `o${i}_title`, label: '餐厅名 (清空即删除)', value: o.title || '' },
@@ -2489,7 +2585,7 @@ ${tripContext}
                     const newOpts = opts.map((o, i) => ({ ...o, title: (v[`o${i}_title`] || '').trim(), link: v[`o${i}_link`] || '', price: v[`o${i}_price`] || '', dishes: v[`o${i}_dishes`] || '' })).filter(o => o.title);
                     const newTitle = (v.new_title || '').trim(); if (newTitle) newOpts.push({ title: newTitle, link: v.new_link||'', rating: '4.5', price: v.new_price||'￥', dishes: v.new_dishes||'' });
                     if (newOpts.length === 0) { alert("请至少保留一家餐厅"); return false; }
-                    ev.options = newOpts; ev.time = v.time || ''; ev.label = v.label || '共同';
+                    ev.options = newOpts; ev.time = v.time || ''; ev.label = v.label || window.getDefaultLabel();
                     // The <select>'s value always comes back as a string, while day.id is a number — compare with String() on both sides (and re-find the target with Number()), or days.find(d => d.id === v.moveTo) silently fails to match and the move just does nothing, with no error
                     if (String(v.moveTo) !== String(day.id)) { const targetDay = tripData.days.find(d => d.id === Number(v.moveTo)); if (targetDay) { day.events.splice(idx, 1); targetDay.events.push(ev); targetDay.events.sort((a,b) => a.time.localeCompare(b.time)); tripData.currentDay = targetDay.id; } }
                     day.events.sort((a,b) => a.time.localeCompare(b.time)); window.saveToCloud(); window.render();
@@ -2497,7 +2593,7 @@ ${tripContext}
             } else {
                 window.openModal("编辑", "", [
                     { id: 'time', label: '时间', value: ev.time },
-                    { id: 'label', label: '标签', type: 'select', options: ['共同', ...window.getMembers()], value: ev.label },
+                    { id: 'label', label: '标签', type: 'select', options: window.getLabelOptions(), value: window.resolveSoloParty(ev.label) || window.getDefaultLabel() },
                     { id: 'title', label: '标题', value: ev.title },
                     { id: 'desc', label: '描述', type: 'textarea', value: ev.desc },
                     { id: 'link', label: '地图链接 (可选)', value: ev.link || '' },
